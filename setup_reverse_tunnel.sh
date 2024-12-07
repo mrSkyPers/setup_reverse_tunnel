@@ -53,13 +53,28 @@ if [ -f /etc/config/reverse-tunnel ]; then
     printf '\n\033[33mОбнаружена существующая конфигурация туннеля.\033[0m\n'
     read -p "Хотите использовать существующую конфигурацию? (y/N): " use_existing
     if [ "$use_existing" = "y" ] || [ "$use_existing" = "Y" ]; then
-        vps_ip=$(uci get reverse-tunnel.@general[0].vps_ip)
-        vps_user=$(uci get reverse-tunnel.@general[0].vps_user)
-        ssh_port=$(uci get reverse-tunnel.@general[0].ssh_port)
-        echo "Загружена конфигурация:"
-        echo "VPS IP: ${vps_ip}"
-        echo "Пользователь: ${vps_user}"
-        echo "SSH порт: ${ssh_port}"
+        # Проверяем наличие секции general
+        if ! uci show reverse-tunnel.@general[0] >/dev/null 2>&1; then
+            printf '\n\033[33mОшибка: конфигурация повреждена, создаём новую...\033[0m\n'
+            mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.broken
+            use_existing="n"
+        else
+            # Проверяем наличие всех необходимых опций
+            vps_ip=$(uci -q get reverse-tunnel.general.vps_ip)
+            vps_user=$(uci -q get reverse-tunnel.general.vps_user)
+            ssh_port=$(uci -q get reverse-tunnel.general.ssh_port)
+            
+            if [ -z "$vps_ip" ] || [ -z "$vps_user" ] || [ -z "$ssh_port" ]; then
+                printf '\n\033[33mОшибка: не все параметры настроены, создаём новую конфигурацию...\033[0m\n'
+                mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.broken
+                use_existing="n"
+            else
+                echo "Загружена конфигурация:"
+                echo "VPS IP: ${vps_ip}"
+                echo "Пользователь: ${vps_user}"
+                echo "SSH порт: ${ssh_port}"
+            fi
+        fi
     else
         printf '\n\033[33mСоздание новой конфигурации...\033[0m\n'
         mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.backup
@@ -161,7 +176,7 @@ start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command \$PROG -NT \\
+    procd_set_param command \$PROG -NT -i /root/.ssh/id_rsa \\
 EOF
 
 # Добавление всех туннелей в команду
@@ -267,8 +282,10 @@ mkdir -p /etc/default
 # Проверка и создание конфига для автоматического восстановления соединения
 if [ ! -f /etc/ssh/ssh_config ] || ! grep -q "ServerAliveInterval" /etc/ssh/ssh_config; then
     cat > /etc/ssh/ssh_config << EOF
-ServerAliveInterval 30
-ServerAliveCountMax 3
+Host *
+    IdentityFile /root/.ssh/id_rsa
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
 EOF
 fi
 
