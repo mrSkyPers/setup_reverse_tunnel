@@ -18,13 +18,13 @@ read -p "Введите номер (1/2): " ssh_choice
 case $ssh_choice in
     2)
         if ! command -v dropbear > /dev/null 2>&1; then
-            printf "\n%sУстановка Dropbear...%s\n" "$c_green" "$c_reset"
+            printf '\n\033[32mУстановка Dropbear...\033[0m\n'
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
             /etc/init.d/dropbear start
         else
-            printf "\n%sDropbear уже установлен%s\n" "$c_green" "$c_reset"
+            printf '\n\033[32mDropbear уже установлен\033[0m\n'
         fi
         ;;
     *)
