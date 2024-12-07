@@ -119,18 +119,24 @@ printf '\n\033[32mКопирование публичного ключа на VP
 # Создаем директорию .ssh если её нет
 mkdir -p /root/.ssh
 
-# Добавляем хост в known_hosts если его там нет
-if ! grep -q "$vps_ip" /root/.ssh/known_hosts 2>/dev/null; then
-    ssh-keyscan -p $ssh_port $vps_ip >> /root/.ssh/known_hosts 2>/dev/null
-fi
+# Принудительно добавляем ключ хоста
+ssh-keyscan -p $ssh_port $vps_ip > /root/.ssh/known_hosts 2>/dev/null
 
 if [ "$ssh_choice" = "2" ]; then
     # Для Dropbear используем cat и ssh для копирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
-    sshpass -p "$vps_password" ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && echo '$KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    # Сначала пробуем напрямую скопировать ключ
+    printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
+        # Если не получилось, используем sshpass
+        sshpass -p "$vps_password" ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && echo '$KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    }
 else
     # Для OpenSSH используем ssh-copy-id
-    sshpass -p "$vps_password" ssh-copy-id -p $ssh_port "${vps_user}@${vps_ip}"
+    # Сначала добавляем ключ хоста в known_hosts
+    mkdir -p ~/.ssh
+    ssh-keyscan -p $ssh_port $vps_ip > ~/.ssh/known_hosts 2>/dev/null
+    # Затем копируем ключ
+    sshpass -p "$vps_password" ssh-copy-id -f -p $ssh_port "${vps_user}@${vps_ip}"
 fi
 
 # Создание скрипта автозапуска
