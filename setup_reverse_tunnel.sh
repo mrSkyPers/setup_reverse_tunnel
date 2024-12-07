@@ -247,7 +247,7 @@ if [ "$ssh_choice" = "2" ]; then
 else
     printf "   - Конфигурация OpenSSH: \033[32m/etc/config/sshd\033[0m\n"
 fi
-printf "   - SSH ключи: \033[32m/root/.ssh/id_rsa\033[0m (приватный) и \033[32m/root/.ssh/id_rsa.pub\033[0m (публичный)\n"
+printf "   - SSH к��ючи: \033[32m/root/.ssh/id_rsa\033[0m (приватный) и \033[32m/root/.ssh/id_rsa.pub\033[0m (публичный)\n"
 printf "   - Настройки SSH клиента: \033[32m/etc/ssh/ssh_config\033[0m\n"
 
 printf "\n3. Настройки AutoSSH:\n"
@@ -302,7 +302,7 @@ printf '\n\033[32mПроверка настроек файервола...\033[0m
 
 # Проверяем, установлен ли файервол
 if ! command -v fw3 &> /dev/null; then
-    printf '\033[33mФайервол не устан��влен. Установка...\033[0m\n'
+    printf '\033[33mФайервол не установлен. Установка...\033[0m\n'
     opkg update
     opkg install firewall
 fi
@@ -320,17 +320,20 @@ is_local_ip() {
     fi
     
     # Проверяем, находится ли IP в диапазоне локальной сети
+    # Конвертируем IP адреса в числа
     local IFS=.
-    local ip_a=($ip)
-    local lan_a=($lan_ip)
-    local mask_a=($lan_mask)
+    set -- $ip
+    local ip_num=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
+    set -- $lan_ip
+    local lan_num=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
+    set -- $lan_mask
+    local mask_num=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
     
-    for i in {0..3}; do
-        if [ $((${ip_a[$i]} & ${mask_a[$i]})) -ne $((${lan_a[$i]} & ${mask_a[$i]})) ]; then
-            return 1
-        fi
-    done
-    return 0
+    # Сравниваем сети
+    if [ $(( ip_num & mask_num )) -eq $(( lan_num & mask_num )) ]; then
+        return 0
+    fi
+    return 1
 }
 
 # Создаем временный файл для новых правил
