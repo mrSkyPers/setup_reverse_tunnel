@@ -154,14 +154,14 @@ START=99
 STOP=15
 USE_PROCD=1
 
-PROG=/usr/bin/autossh
+PROG=/usr/bin/ssh
 CONFIGFILE=/etc/config/reverse-tunnel
 
 start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command \$PROG -M 0 -N \\
+    procd_set_param command \$PROG -NT \\
 EOF
 
 # Добавление всех туннелей в команду
@@ -217,15 +217,6 @@ chmod +x /etc/init.d/reverse-tunnel
 /etc/init.d/reverse-tunnel enable
 /etc/init.d/reverse-tunnel start
 
-# Установка autossh если не установлен
-if ! command -v autossh &> /dev/null; then
-    printf '\n\033[32mУстановка autossh...\033[0m\n'
-    opkg update
-    opkg install autossh
-else
-    printf '\n\033[32mautossh уже установлен\033[0m\n'
-fi
-
 printf '\n\033[32mНастройка завершена!\033[0m\n'
 printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
 
@@ -247,11 +238,8 @@ if [ "$ssh_choice" = "2" ]; then
 else
     printf "   - Конфигурация OpenSSH: \033[32m/etc/config/sshd\033[0m\n"
 fi
-printf "   - SSH к��ючи: \033[32m/root/.ssh/id_rsa\033[0m (приватный) и \033[32m/root/.ssh/id_rsa.pub\033[0m (публичный)\n"
+printf "   - SSH ключи: \033[32m/root/.ssh/id_rsa\033[0m (приватный) и \033[32m/root/.ssh/id_rsa.pub\033[0m (публичный)\n"
 printf "   - Настройки SSH клиента: \033[32m/etc/ssh/ssh_config\033[0m\n"
-
-printf "\n3. Настройки AutoSSH:\n"
-printf "   - Конфигурация AutoSSH: \033[32m/etc/default/autossh\033[0m\n"
 
 printf '\n\033[33mУправление службой:\033[0m\n'
 printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n"
@@ -260,9 +248,7 @@ printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\03
 printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
 printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
 printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
-
-printf '\n\033[33mПросмотр логов:\033[0m\n'
-printf "logread | grep autossh\n"
+printf "Ручной запуск с отладкой: \033[32mssh -vvv -NT -R ${remote_port}:${local_host}:${local_port} ${vps_user}@${vps_ip} -p ${ssh_port}\033[0m\n"
 
 printf '\n\033[33mРедактирование конфигурации через UCI:\033[0m\n'
 printf "Просмотр настроек:     \033[32muci show reverse-tunnel\033[0m\n"
@@ -283,17 +269,6 @@ if [ ! -f /etc/ssh/ssh_config ] || ! grep -q "ServerAliveInterval" /etc/ssh/ssh_
     cat > /etc/ssh/ssh_config << EOF
 ServerAliveInterval 30
 ServerAliveCountMax 3
-EOF
-fi
-
-# Проверка и создание настроек autossh
-if [ ! -f /etc/default/autossh ]; then
-    cat > /etc/default/autossh << EOF
-AUTOSSH_GATETIME=0
-AUTOSSH_POLL=60
-AUTOSSH_FIRST_POLL=30
-AUTOSSH_PORT=0
-AUTOSSH_DEBUG=1
 EOF
 fi
 
