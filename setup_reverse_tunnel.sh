@@ -1,30 +1,16 @@
 #!/bin/sh
 
-# Проверка поддержки цветов
-if [ -t 1 ]; then
-    ncolors=$(tput colors 2>/dev/null)
-    if [ -n "$ncolors" ] && [ "$ncolors" -ge 8 ]; then
-        GREEN=$(printf '\033[0;32m')
-        BLUE=$(printf '\033[0;34m')
-        YELLOW=$(printf '\033[1;33m')
-        NC=$(printf '\033[0m')
-    else
-        GREEN=""
-        BLUE=""
-        YELLOW=""
-        NC=""
-    fi
-else
-    GREEN=""
-    BLUE=""
-    YELLOW=""
-    NC=""
-fi
+# Установка цветов для вывода
+esc=""
+c_reset="${esc}[0m"
+c_green="${esc}[32m"
+c_blue="${esc}[34m"
+c_yellow="${esc}[33m"
 
-printf "%sНастройка обратного SSH-туннеля для OpenWRT%s\n\n" "$BLUE" "$NC"
+printf '\033[34mНастройка обратного SSH-туннеля для OpenWRT\033[0m\n\n'
 
 # Выбор SSH сервера
-printf "%sВыберите SSH сервер:%s\n" "$YELLOW" "$NC"
+printf '\033[33mВыберите SSH сервер:\033[0m\n'
 echo "1) OpenSSH (рекомендуется)"
 echo "2) Dropbear (установлен по умолчанию, меньше нагрузки на сервер)"
 read -p "Введите номер (1/2): " ssh_choice
@@ -32,40 +18,40 @@ read -p "Введите номер (1/2): " ssh_choice
 case $ssh_choice in
     2)
         if ! command -v dropbear > /dev/null 2>&1; then
-            printf "\n%sУстановка Dropbear...%s\n" "$GREEN" "$NC"
+            printf "\n%sУстановка Dropbear...%s\n" "$c_green" "$c_reset"
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
             /etc/init.d/dropbear start
         else
-            printf "\n%sDropbear уже установлен%s\n" "$GREEN" "$NC"
+            printf "\n%sDropbear уже установлен%s\n" "$c_green" "$c_reset"
         fi
         ;;
     *)
         if ! command -v ssh > /dev/null 2>&1; then
-            printf "\n%sУстановка OpenSSH...%s\n" "$GREEN" "$NC"
+            printf "\n%sУстановка OpenSSH...%s\n" "$c_green" "$c_reset"
             opkg update
             opkg install openssh-server openssh-sftp-server
             /etc/init.d/sshd enable
             /etc/init.d/sshd start
         else
-            printf "\n%sOpenSSH уже установлен%s\n" "$GREEN" "$NC"
+            printf "\n%sOpenSSH уже установлен%s\n" "$c_green" "$c_reset"
         fi
         ;;
 esac
 
 # Установка sshpass для автоматического ввода пароля
 if ! command -v sshpass &> /dev/null; then
-    printf "\n%sУстановка sshpass...%s\n" "$GREEN" "$NC"
+    printf "\n%sУстановка sshpass...%s\n" "$c_green" "$c_reset"
     opkg update
     opkg install sshpass
 else
-    printf "\n%ssshpass уже установлен%s\n" "$GREEN" "$NC"
+    printf "\n%ssshpass уже установлен%s\n" "$c_green" "$c_reset"
 fi
 
 # Запрос данных VPS
 if [ -f /etc/config/reverse-tunnel ]; then
-    printf "\n%sОбнаружена существующая конфигурация туннеля.%s\n" "$YELLOW" "$NC"
+    printf "\n%sОбнаружена существующая конфигурация туннеля.%s\n" "$c_yellow" "$c_reset"
     read -p "Хотите использовать существующую конфигурацию? (y/N): " use_existing
     if [ "$use_existing" = "y" ] || [ "$use_existing" = "Y" ]; then
         vps_ip=$(uci get reverse-tunnel.@general[0].vps_ip)
@@ -76,7 +62,7 @@ if [ -f /etc/config/reverse-tunnel ]; then
         echo "Пользователь: ${vps_user}"
         echo "SSH порт: ${ssh_port}"
     else
-        printf "\n%sСоздание новой конфигурации...%s\n" "$YELLOW" "$NC"
+        printf "\n%sСоздание новой конфигурации...%s\n" "$c_yellow" "$c_reset"
         mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.backup
         echo "Предыдущая конфигурация сохранена как /etc/config/reverse-tunnel.backup"
     fi
@@ -101,7 +87,7 @@ read -p "Сколько туннелей вы хотите настроить? "
 
 i=1
 while [ $i -le $tunnel_count ]; do
-    printf "\n%sНастройка туннеля %d:%s\n" "$YELLOW" "$i" "$NC"
+    printf "\n%sНастройка туннеля %d:%s\n" "$c_yellow" "$i" "$c_reset"
     read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
     read -p "Введите локальный порт для туннеля $i (например 22): " local_port
     read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
@@ -113,7 +99,7 @@ while [ $i -le $tunnel_count ]; do
 done
 
 # Создание SSH-ключей
-printf "\n%sГенерация SSH-ключей...%s\n" "$GREEN" "$NC"
+printf "\n%sГенерация SSH-ключей...%s\n" "$c_green" "$c_reset"
 if [ "$ssh_choice" = "2" ]; then
     # Использование dropbearkey для Dropbear
     if [ ! -f /root/.ssh/id_rsa ]; then
@@ -130,7 +116,7 @@ else
 fi
 
 # Копирование публичного ключа на VPS
-printf "\n%sКопирование публичного ключа на VPS...%s\n" "$GREEN" "$NC"
+printf "\n%sКопирование публичного ключа на VPS...%s\n" "$c_green" "$c_reset"
 if [ "$ssh_choice" = "2" ]; then
     # Для Dropbear используем cat и ssh для копирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
@@ -213,14 +199,14 @@ chmod +x /etc/init.d/reverse-tunnel
 
 # Установка autossh если не установлен
 if ! command -v autossh &> /dev/null; then
-    printf "\n%sУстановка autossh...%s\n" "$GREEN" "$NC"
+    printf "\n%sУстановка autossh...%s\n" "$c_green" "$c_reset"
     opkg update
     opkg install autossh
 else
-    printf "\n%sautossh уже установлен%s\n" "$GREEN" "$NC"
+    printf "\n%sautossh уже установлен%s\n" "$c_green" "$c_reset"
 fi
 
-printf "\n%sНастройка завершена!%s\n" "$GREEN" "$NC"
+printf "\n%sНастройка завершена!%s\n" "$c_green" "$c_reset"
 printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
 
 for remote_port in $tunnel_ports; do
@@ -230,42 +216,42 @@ for remote_port in $tunnel_ports; do
     i=$((i + 1))
 done
 
-printf "\n%sСозданные файлы и конфигурации:%s\n" "$YELLOW" "$NC"
+printf "\n%sСозданные файлы и конфигурации:%s\n" "$c_yellow" "$c_reset"
 printf "\n1. Основные конфигурационные файлы:\n"
-printf "   - Конфигурация туннелей: %s/etc/config/reverse-tunnel%s\n" "$GREEN" "$NC"
-printf "   - Скрипт автозапуска: %s/etc/init.d/reverse-tunnel%s\n" "$GREEN" "$NC"
+printf "   - Конфигурация туннелей: %s/etc/config/reverse-tunnel%s\n" "$c_green" "$c_reset"
+printf "   - Скрипт автозапуска: %s/etc/init.d/reverse-tunnel%s\n" "$c_green" "$c_reset"
 
 printf "\n2. SSH конфигурация:\n"
 if [ "$ssh_choice" = "2" ]; then
-    printf "   - Конфигурация Dropbear: %s/etc/config/dropbear%s\n" "$GREEN" "$NC"
+    printf "   - Конфигурация Dropbear: %s/etc/config/dropbear%s\n" "$c_green" "$c_reset"
 else
-    printf "   - Конфигур��ция OpenSSH: %s/etc/config/sshd%s\n" "$GREEN" "$NC"
+    printf "   - Конфигурация OpenSSH: %s/etc/config/sshd%s\n" "$c_green" "$c_reset"
 fi
-printf "   - SSH ключи: %s/root/.ssh/id_rsa%s (приватный) и %s/root/.ssh/id_rsa.pub%s (публичный)\n" "$GREEN" "$NC" "$GREEN" "$NC"
-printf "   - Настройки SSH клиента: %s/etc/ssh/ssh_config%s\n" "$GREEN" "$NC"
+printf "   - SSH ключи: %s/root/.ssh/id_rsa%s (приватный) и %s/root/.ssh/id_rsa.pub%s (публичный)\n" "$c_green" "$c_reset" "$c_green" "$c_reset"
+printf "   - Настройки SSH клиента: %s/etc/ssh/ssh_config%s\n" "$c_green" "$c_reset"
 
 printf "\n3. Настройки AutoSSH:\n"
-printf "   - Конфигурация AutoSSH: %s/etc/default/autossh%s\n" "$GREEN" "$NC"
+printf "   - Конфигурация AutoSSH: %s/etc/default/autossh%s\n" "$c_green" "$c_reset"
 
-printf "\n%sУправление службой:%s\n" "$YELLOW" "$NC"
-printf "Запуск:          %s/etc/init.d/reverse-tunnel start%s\n" "$GREEN" "$NC"
-printf "Остановка:       %s/etc/init.d/reverse-tunnel stop%s\n" "$GREEN" "$NC"
-printf "Перезапуск:      %s/etc/init.d/reverse-tunnel restart%s\n" "$GREEN" "$NC"
-printf "Статус:          %s/etc/init.d/reverse-tunnel status%s\n" "$GREEN" "$NC"
-printf "Включить автозапуск:   %s/etc/init.d/reverse-tunnel enable%s\n" "$GREEN" "$NC"
-printf "Отключить автозапуск:  %s/etc/init.d/reverse-tunnel disable%s\n" "$GREEN" "$NC"
+printf "\n%sУправление службой:%s\n" "$c_yellow" "$c_reset"
+printf "Запуск:          %s/etc/init.d/reverse-tunnel start%s\n" "$c_green" "$c_reset"
+printf "Остановка:       %s/etc/init.d/reverse-tunnel stop%s\n" "$c_green" "$c_reset"
+printf "Перезапуск:      %s/etc/init.d/reverse-tunnel restart%s\n" "$c_green" "$c_reset"
+printf "Статус:          %s/etc/init.d/reverse-tunnel status%s\n" "$c_green" "$c_reset"
+printf "Включить автозапуск:   %s/etc/init.d/reverse-tunnel enable%s\n" "$c_green" "$c_reset"
+printf "Отключить автозапуск:  %s/etc/init.d/reverse-tunnel disable%s\n" "$c_green" "$c_reset"
 
-printf "\n%sПросмотр логов:%s\n" "$YELLOW" "$NC"
+printf "\n%sПросмотр логов:%s\n" "$c_yellow" "$c_reset"
 printf "logread | grep autossh\n"
 
-printf "\n%sРедактирование конфигурации через UCI:%s\n" "$YELLOW" "$NC"
-printf "Просмотр настроек:     %suci show reverse-tunnel%s\n" "$GREEN" "$NC"
-printf "Изменение настроек:    %suci set reverse-tunnel.@general[0].vps_ip='новый_ip'%s\n" "$GREEN" "$NC"
-printf "Применение изменений:  %suci commit reverse-tunnel%s\n" "$GREEN" "$NC"
+printf "\n%sРедактирование конфигурации через UCI:%s\n" "$c_yellow" "$c_reset"
+printf "Просмотр настроек:     %suci show reverse-tunnel%s\n" "$c_green" "$c_reset"
+printf "Изменение настроек:    %suci set reverse-tunnel.@general[0].vps_ip='новый_ip'%s\n" "$c_green" "$c_reset"
+printf "Применение изменений:  %suci commit reverse-tunnel%s\n" "$c_green" "$c_reset"
 
-printf "\n%sРезервное копирование:%s\n" "$YELLOW" "$NC"
+printf "\n%sРезервное копирование:%s\n" "$c_yellow" "$c_reset"
 if [ -f /etc/config/reverse-tunnel.backup ]; then
-    printf "Резервная копия предыдущей конфигурации: %s/etc/config/reverse-tunnel.backup%s\n" "$GREEN" "$NC"
+    printf "Резервная копия предыдущей конфигурации: %s/etc/config/reverse-tunnel.backup%s\n" "$c_green" "$c_reset"
 fi
 
 # Проверка существования директорий и файлов конфигурации
@@ -292,11 +278,11 @@ EOF
 fi
 
 # Настройка файервола
-printf "\n%sПроверка настроек файервола...%s\n" "$GREEN" "$NC"
+printf "\n%sПроверка настроек файервола...%s\n" "$c_green" "$c_reset"
 
 # Проверяем, установлен ли файервол
 if ! command -v fw3 &> /dev/null; then
-    printf "%sФайервол не установлен. Установка...%s\n" "$YELLOW" "$NC"
+    printf "%sФайервол не установлен. Установка...%s\n" "$c_yellow" "$c_reset"
     opkg update
     opkg install firewall
 fi
@@ -371,22 +357,22 @@ fi
 
 # Если нужны новые правила, добавляем их
 if [ $NEED_RELOAD -eq 1 ]; then
-    printf "%sДобавление новых правил файервола...%s\n" "$YELLOW" "$NC"
+    printf "%sДобавление новых правил файервола...%s\n" "$c_yellow" "$c_reset"
     cat /tmp/firewall.reverse-tunnel >> /etc/config/firewall
     
     # Перезапускаем файервол
-    printf "%sПерезапуск файервола...%s\n" "$GREEN" "$NC"
+    printf "%sПерезапуск файервола...%s\n" "$c_green" "$c_reset"
     /etc/init.d/firewall restart
 else
-    printf "%sВсе необходимые правила файервола уже настроены%s\n" "$GREEN" "$NC"
+    printf "%sВсе необходимые правила файервола уже настроены%s\n" "$c_green" "$c_reset"
 fi
 
 # Удаляем временный файл
 rm /tmp/firewall.reverse-tunnel
 
 # Добавляем информацию о файерволе в вывод
-printf "\n%sНастройки файервола:%s\n" "$YELLOW" "$NC"
-printf "Конфигурация файервола: %s/etc/config/firewall%s\n" "$GREEN" "$NC"
+printf "\n%sНастройки файервола:%s\n" "$c_yellow" "$c_reset"
+printf "Конфигурация файервола: %s/etc/config/firewall%s\n" "$c_green" "$c_reset"
 printf "Управление файерволом:\n"
-printf "Перезапуск:  %s/etc/init.d/firewall restart%s\n" "$GREEN" "$NC"
-printf "Статус:      %s/etc/init.d/firewall status%s\n" "$GREEN" "$NC"
+printf "Перезапуск:  %s/etc/init.d/firewall restart%s\n" "$c_green" "$c_reset"
+printf "Статус:      %s/etc/init.d/firewall status%s\n" "$c_green" "$c_reset"
