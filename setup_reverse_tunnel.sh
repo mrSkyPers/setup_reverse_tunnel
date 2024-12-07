@@ -1,12 +1,5 @@
 #!/bin/sh
 
-# Установка цветов для вывода
-esc=""
-c_reset="${esc}[0m"
-c_green="${esc}[32m"
-c_blue="${esc}[34m"
-c_yellow="${esc}[33m"
-
 printf '\033[34mНастройка обратного SSH-туннеля для OpenWRT\033[0m\n\n'
 
 # Выбор SSH сервера
@@ -29,13 +22,13 @@ case $ssh_choice in
         ;;
     *)
         if ! command -v ssh > /dev/null 2>&1; then
-            printf "\n%sУстановка OpenSSH...%s\n" "$c_green" "$c_reset"
+            printf '\n\033[32mУстановка OpenSSH...\033[0m\n'
             opkg update
             opkg install openssh-server openssh-sftp-server
             /etc/init.d/sshd enable
             /etc/init.d/sshd start
         else
-            printf "\n%sOpenSSH уже установлен%s\n" "$c_green" "$c_reset"
+            printf '\n\033[32mOpenSSH уже установлен\033[0m\n'
         fi
         ;;
 esac
