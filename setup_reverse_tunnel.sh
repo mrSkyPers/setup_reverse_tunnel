@@ -119,21 +119,26 @@ printf '\n\033[32mКопирование публичного ключа на VP
 # Создаем директорию .ssh если её нет
 mkdir -p /root/.ssh
 
-# Очищаем старые записи для этого хоста
-sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
-
-# Добавляем все типы ключей хоста без интерактивного запроса
-for type in rsa ecdsa ed25519; do
-    ssh-keyscan -t $type -p $ssh_port $vps_ip >> /root/.ssh/known_hosts 2>/dev/null
-done
+# Для Dropbear создаем пустой known_hosts, чтобы пропустить проверку
+if [ "$ssh_choice" = "2" ]; then
+    touch /root/.ssh/known_hosts
+else
+    # Для OpenSSH используем стандартный подход
+    # Очищаем старые записи для этого хоста
+    sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
+    # Добавляем все типы ключей хоста
+    for type in rsa ecdsa ed25519; do
+        ssh-keyscan -t $type -p $ssh_port $vps_ip >> /root/.ssh/known_hosts 2>/dev/null
+    done
+fi
 
 if [ "$ssh_choice" = "2" ]; then
     # Для Dropbear используем cat и ssh для копирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
     # Сначала пробуем напрямую скопировать ключ
-    printf '%s\n' "$KEY" | ssh -o StrictHostKeyChecking=no -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
+    printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
         # Если не получилось, используем sshpass
-        sshpass -p "$vps_password" ssh -o StrictHostKeyChecking=no -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && echo '$KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+        printf "yes\n" | sshpass -p "$vps_password" ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && echo '$KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
     }
 else
     # Для OpenSSH используем ssh-copy-id
@@ -222,7 +227,7 @@ else
 fi
 
 printf '\n\033[32mНастройка завершена!\033[0m\n'
-printf "Для подключения к OpenWRT исполь��уйте следующие команды на вашем VPS сервере:\n\n"
+printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
 
 for remote_port in $tunnel_ports; do
     local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
@@ -297,7 +302,7 @@ printf '\n\033[32mПроверка настроек файервола...\033[0m
 
 # Проверяем, установлен ли файервол
 if ! command -v fw3 &> /dev/null; then
-    printf '\033[33mФайервол не установлен. Установка...\033[0m\n'
+    printf '\033[33mФайервол не устан��влен. Установка...\033[0m\n'
     opkg update
     opkg install firewall
 fi
@@ -379,7 +384,7 @@ if [ $NEED_RELOAD -eq 1 ]; then
     printf '\033[32mПерезапуск файервола...\033[0m\n'
     /etc/init.d/firewall restart
 else
-    printf '\033[32mВсе необходимые правила файер��ола уже настроены\033[0m\n'
+    printf '\033[32mВсе необходимые правила файервола уже настроены\033[0m\n'
 fi
 
 # Удаляем временный файл
