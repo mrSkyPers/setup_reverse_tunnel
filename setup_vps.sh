@@ -196,15 +196,21 @@ EOF
 # Настройка параметров ядра
 printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
 printf "\033[1;32m→ Настройка параметров ядра...\033[0m\n"
-# Добавляем параметры по одному
-echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_max_syn_backlog=65535" >> /etc/sysctl.conf
-  
-# Применяем изменения только для существующих параметров
-sysctl -w net.ipv4.ip_forward=1 2>/dev/null
-sysctl -w net.ipv4.tcp_max_syn_backlog=65535 2>/dev/null
-  
-# Перезагружаем все параметры, игнорируя ошибки
+
+# Функция для безопасного добавления параметров
+add_sysctl_param() {
+    param=$1
+    value=$2
+    if ! grep -q "^$param\s*=" /etc/sysctl.conf; then
+        echo "$param=$value" >> /etc/sysctl.conf
+    fi
+}
+
+# Добавляем параметры только если их нет
+add_sysctl_param "net.ipv4.ip_forward" "1"
+add_sysctl_param "net.ipv4.tcp_max_syn_backlog" "65535"
+
+# Применяем изменения
 sysctl -p 2>/dev/null || true
 
 # Создание скрипта мониторинга
