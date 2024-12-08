@@ -103,16 +103,22 @@ if [ $UFW_ACTIVE -eq 1 ] && [ "$fw_choice" = "2" ]; then
     printf "3. Продолжить установку\n\n"
     
     printf "\033[1mВыберите действие:\033[0m\n"
-    read -p "Отключить UFW перед продолжением? [Y/n]: " disable_ufw
-    if [ "$disable_ufw" != "n" ] && [ "$disable_ufw" != "N" ]; then
+    printf "1) Только отключить UFW\n"
+    printf "2) Отключить и удалить UFW\n"
+    printf "3) Продолжить с активным UFW\n"
+    read -p "Выберите действие (1/2/3): " disable_ufw
+    if [ "$disable_ufw" = "1" ]; then
         printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
         ufw disable
-        printf "\033[1;34m→ Удаление UFW...\033[0m\n"
+    elif [ "$disable_ufw" = "2" ]; then
+        printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
+        ufw disable
+        printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
         apt remove -y ufw
     else
         printf "\n\033[1;33m⚠ Предупреждение: Продолжение с активным UFW может привести к проблемам!\033[0m\n"
-        read -p "Продолжить? [y/N]: " continue_anyway
-        if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
+        read -p "Продолжить? (1 - да/2 - нет) [2]: " continue_anyway
+        if [ "$continue_anyway" != "1" ]; then
             printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
             exit 1
         fi
