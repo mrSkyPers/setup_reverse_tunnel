@@ -97,10 +97,6 @@ if [ $UFW_ACTIVE -eq 1 ] && [ "$fw_choice" = "2" ]; then
     printf "\n\033[1;33m⚠ Внимание: Обнаружен конфликт!\033[0m\n"
     printf "\033[33mUFW активен и управляет правилами iptables!\033[0m\n"
     printf "Использование iptables напрямую может привести к конфликтам.\n\n"
-    printf "\033[1mРекомендуемые действия:\033[0m\n"
-    printf "1. Отключить UFW: sudo ufw disable\n"
-    printf "2. Удалить UFW: sudo apt remove ufw\n"
-    printf "3. Продолжить установку\n\n"
     
     printf "\033[1mВыберите действие:\033[0m\n"
     printf "1) Только отключить UFW\n"
@@ -141,7 +137,7 @@ ClientAliveCountMax 3
 EOF
 
 # Перезапуск SSH
-printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
+printf "\033[1;32m→ П��резапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
 
 # Настройка файервола
@@ -200,13 +196,11 @@ EOF
 # Настройка параметров ядра
 printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
 printf "\033[1;32m→ Настройка параметров ядра...\033[0m\n"
-# Проверяем и устанавливаем только существующие параметры
-{
-    cat >> /etc/sysctl.conf << EOF
-    net.ipv4.ip_forward=1
-    net.ipv4.tcp_max_syn_backlog=65535
-    EOF
-}
+# Записываем параметры в конфигурационный файл
+cat >> /etc/sysctl.conf << EOF
+net.ipv4.ip_forward=1
+net.ipv4.tcp_max_syn_backlog=65535
+EOF
 
 # Применяем изменения только для существующих параметров
 sysctl -w net.ipv4.ip_forward=1 2>/dev/null
