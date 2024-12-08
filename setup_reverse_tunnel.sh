@@ -115,7 +115,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     i=1
     while [ $i -le $tunnel_count ]; do
-        printf '\n\033[33mНастройка туннеля %d:\033[0m\n' "$i"
+        printf '\n\033[33mНаcтройка туннеля %d:\033[0m\n' "$i"
         read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
         read -p "Введите локальный порт для туннеля $i (например 22): " local_port
         read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
@@ -338,7 +338,7 @@ touch /etc/ssh/ssh_config
 cleanup_config "/etc/ssh/ssh_config"
 cleanup_config "/etc/ssh/sshd_config"
 
-# Добавляем параметры без дублирования
+# Добавляем па��аметры без дублирования
 add_ssh_param "Host *" "" "/etc/ssh/ssh_config"
 add_ssh_param "    IdentityFile" "/root/.ssh/id_rsa" "/etc/ssh/ssh_config"
 add_ssh_param "    ServerAliveInterval" "30" "/etc/ssh/ssh_config"
