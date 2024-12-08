@@ -7,36 +7,70 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Запрос портов для туннелей
+printf "\n\033[1;34m=== Настройка портов туннелей ===\033[0m\n"
 read -p "Введите порты для туннелей через пробел (например: 19999 20000): " TUNNEL_PORTS
 
 # Проверка установленных файерволов
-printf "\nПроверка файерволов...\n"
+printf "\n\033[1;34m=== Проверка файерволов ===\033[0m\n"
+printf "Сканирование системы...\n"
 UFW_INSTALLED=0
 IPTABLES_INSTALLED=0
+UFW_ACTIVE=0
 
 if command -v ufw >/dev/null 2>&1; then
     UFW_STATUS=$(ufw status | grep -q "Status: active" && echo "активен" || echo "неактивен")
     UFW_INSTALLED=1
-    printf "\nUFW установлен и %s\n" "$UFW_STATUS"
-    printf "Текущие правила UFW:\n"
+    if [ "$UFW_STATUS" = "активен" ]; then
+        UFW_ACTIVE=1
+    fi
+    printf "\n\033[1;32m→ UFW установлен и %s\033[0m\n" "$UFW_STATUS"
+    printf "\033[1mТекущие правила UFW:\033[0m\n"
     ufw status numbered | grep -E "(22|$TUNNEL_PORTS)" | sed 's/^/  /'
 fi
 
 if command -v iptables >/dev/null 2>&1; then
     IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | wc -l)
     IPTABLES_INSTALLED=1
-    printf "\nIPTables установлен, найдено правил: %s\n" "$IPTABLES_RULES"
-    printf "Текущие правила IPTables:\n"
+    printf "\n\033[1;32m→ IPTables установлен, найдено правил: %s\033[0m\n" "$IPTABLES_RULES"
+    printf "\033[1mТекущие правила IPTables:\033[0m\n"
     iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
 fi
 
-printf "\nДоступные опции:\n"
-printf "1) UFW - современный файервол, простой в управлении\n"
+# Предупреждение о конфликтах
+if [ $UFW_ACTIVE -eq 1 ] && [ "$fw_choice" = "2" ]; then
+    printf "\n\033[1;33m⚠ Внимание: Обнаружен конфликт!\033[0m\n"
+    printf "\033[33mUFW активен и управляет правилами iptables!\033[0m\n"
+    printf "Использование iptables напрямую может привести к конфликтам.\n\n"
+    printf "\033[1mРекомендуемые действия:\033[0m\n"
+    printf "1. Отключить UFW: sudo ufw disable\n"
+    printf "2. Удалить UFW: sudo apt remove ufw\n"
+    printf "3. Продолжить установку\n\n"
+    
+    printf "\033[1mВыберите действие:\033[0m\n"
+    read -p "Отключить UFW перед продолжением? [Y/n]: " disable_ufw
+    if [ "$disable_ufw" != "n" ] && [ "$disable_ufw" != "N" ]; then
+        printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
+        ufw disable
+        printf "\033[1;34m→ Удаление UFW...\033[0m\n"
+        apt remove -y ufw
+    else
+        printf "\n\033[1;33m⚠ Предупреждение: Продолжение с активным UFW может привести к проблемам!\033[0m\n"
+        read -p "Продолжить? [y/N]: " continue_anyway
+        if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
+            printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
+            exit 1
+        fi
+    fi
+fi
+
+printf "\n\033[1;34m=== Выбор файервола ===\033[0m\n"
+printf "\033[1mДоступные опции:\033[0m\n\n"
+printf "\033[1m1) UFW - современный файервол, простой в управлении\033[0m\n"
 printf "   - Удобный интерфейс командной строки\n"
 printf "   - Простое управление правилами\n"
-printf "   - Автоматическое сохранение правил\n"
+printf "   - Автоматическое сохранение правил\n\n"
 
-printf "2) IPTables - классический файервол Linux\n"
+printf "\033[1m2) IPTables - классический файервол Linux\033[0m\n"
 printf "   - Более гибкая настройка\n"
 printf "   - Низкоуровневый контроль\n"
 printf "   - Меньше зависимостей\n"
