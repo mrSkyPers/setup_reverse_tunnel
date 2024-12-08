@@ -117,12 +117,13 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Проверяем порт SSH
     printf "Проверка SSH соединения...\n"
-    if ! timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "exit" >/dev/null 2>&1; then
+    if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "exit" >/dev/null 2>&1; then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Работу SSH сервера на VPS\n"
         printf "2. Настройки firewall на VPS\n"
         printf "3. Правильность указанного порта\n"
+        printf "4. Правильность имени пользователя и пароля\n"
         printf "\nПопробуйте выполнить команду вручную:\n"
         printf "  ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
         exit 1
@@ -256,7 +257,7 @@ config reverse-tunnel 'general'
     option vps_ip '${vps_ip}'
 EOF
 
-# Добавление туннелей в конфиг
+# Добавление тунн��лей в конфиг
 for remote_port in $tunnel_ports; do
     local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
     local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
@@ -302,7 +303,7 @@ printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n
 printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
 printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
 printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
-printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
+printf "Включить ав��озапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
 printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
 printf "Ручной запуск с отладкой: \033[32mssh -vvv -NT -R ${remote_port}:${local_host}:${local_port} ${vps_user}@${vps_ip} -p ${ssh_port}\033[0m\n"
 
