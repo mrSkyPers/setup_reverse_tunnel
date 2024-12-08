@@ -250,42 +250,66 @@ install_package "net-tools"
 printf "\n\033[1;34m=== Настройка SSH ===\033[0m\n"
 printf "\033[1;32m→ Обновление конфигурации SSH...\033[0m\n"
 
-# Функция для удаления дублирующихся строк в файле
-cleanup_config() {
-    local file="$1"
-    if [ -f "$file" ]; then
-        printf "\033[1;32m→ Очистка дублирующихся строк в %s...\033[0m\n" "$file"
-        # Создаем временный файл
-        temp_file=$(mktemp)
-        # Оставляем только последнее вхождение каждой строки, сохраняя порядок
-        awk '!seen[$0]++' "$file" > "$temp_file"
-        # Заменяем оригинальный файл очищенным
-        mv "$temp_file" "$file"
-    fi
-}
+# Создаем резервную копию
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
 
-# Функция для безопасного добавления параметров SSH
-add_ssh_param() {
-    local param="$1"
-    local value="$2"
-    local file="$3"
-    if ! grep -q "^$param\s*$value" "$file"; then
-        echo "$param $value" >> "$file"
-    fi
-}
+# Настраиваем основные параметры SSH
+cat > /etc/ssh/sshd_config << EOF
+# Основные настройки
+Port 22
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
 
-# Очищаем конфиг от дублирующихся строк
-cleanup_config "/etc/ssh/sshd_config"
+# Аутентификация
+PermitRootLogin yes
+PubkeyAuthentication yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
 
-# Добавляем параметры без дублирования
-add_ssh_param "GatewayPorts" "yes" "/etc/ssh/sshd_config"
-add_ssh_param "AllowTcpForwarding" "yes" "/etc/ssh/sshd_config"
-add_ssh_param "ClientAliveInterval" "30" "/etc/ssh/sshd_config"
-add_ssh_param "ClientAliveCountMax" "3" "/etc/ssh/sshd_config"
+# Туннелирование
+AllowTcpForwarding yes
+GatewayPorts yes
+X11Forwarding no
 
-# Перезапуск SSH
+# Таймауты
+ClientAliveInterval 30
+ClientAliveCountMax 3
+
+# Безопасность
+MaxAuthTries 6
+MaxSessions 10
+
+# Логирование
+SyslogFacility AUTH
+LogLevel INFO
+EOF
+
+# Проверяем конфигурацию
+printf "\033[1;32m→ Проверка конфигурации SSH...\033[0m\n"
+if ! sshd -t; then
+    printf "\033[1;31m✗ Ошибка в конфигурации SSH! Восстанавливаем backup...\033[0m\n"
+    mv /etc/ssh/sshd_config.backup /etc/ssh/sshd_config
+    systemctl restart sshd
+    exit 1
+fi
+
+# Перезапускаем SSH
 printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
+
+# Проверяем статус
+if ! systemctl is-active --quiet sshd; then
+    printf "\033[1;31m✗ SSH сервер не запустился! Восстанавливаем backup...\033[0m\n"
+    mv /etc/ssh/sshd_config.backup /etc/ssh/sshd_config
+    systemctl restart sshd
+    exit 1
+fi
+
+printf "\033[1;32m✓ SSH настроен успешно\033[0m\n"
 
 # Настройка firewall
 printf "\n\033[1;34m=== Настройка firewall ===\033[0m\n"
