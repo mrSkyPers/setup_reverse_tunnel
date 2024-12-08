@@ -181,7 +181,7 @@ elif [ $IPTABLES_INSTALLED -eq 1 ]; then
         fw_choice=2
     fi
 else
-    printf "\nНи один firewall не установлен. Ка��ой установить?\n"
+    printf "\nНи один firewall не установлен. Какой установить?\n"
     printf "1) UFW\n"
     printf "2) IPTables\n"
     read -p "Введите номер (1/2) [1]: " fw_choice
@@ -242,26 +242,53 @@ install_package() {
     fi
 }
 
-# Проверка и установ��а необходимых пакетов
+# Проверка и установки необходимых пакетов
 install_package "fail2ban"
 install_package "net-tools"
 
 # Настройка SSH
 printf "\n\033[1;34m=== Настройка SSH ===\033[0m\n"
 printf "\033[1;32m→ Обновление конфигурации SSH...\033[0m\n"
-cat >> /etc/ssh/sshd_config << EOF
-GatewayPorts yes
-AllowTcpForwarding yes
-ClientAliveInterval 30
-ClientAliveCountMax 3
-EOF
+
+# Функция для удаления дублирующихся строк в файле
+cleanup_config() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        printf "\033[1;32m→ Очистка дублирующихся строк в %s...\033[0m\n" "$file"
+        # Создаем временный файл
+        temp_file=$(mktemp)
+        # Оставляем только последнее вхождение каждой строки, сохраняя порядок
+        awk '!seen[$0]++' "$file" > "$temp_file"
+        # Заменяем оригинальный файл очищенным
+        mv "$temp_file" "$file"
+    fi
+}
+
+# Функция для безопасного добавления параметров SSH
+add_ssh_param() {
+    local param="$1"
+    local value="$2"
+    local file="$3"
+    if ! grep -q "^$param\s*$value" "$file"; then
+        echo "$param $value" >> "$file"
+    fi
+}
+
+# Очищаем конфиг от дублирующихся строк
+cleanup_config "/etc/ssh/sshd_config"
+
+# Добавляем параметры без дублирования
+add_ssh_param "GatewayPorts" "yes" "/etc/ssh/sshd_config"
+add_ssh_param "AllowTcpForwarding" "yes" "/etc/ssh/sshd_config"
+add_ssh_param "ClientAliveInterval" "30" "/etc/ssh/sshd_config"
+add_ssh_param "ClientAliveCountMax" "3" "/etc/ssh/sshd_config"
 
 # Перезапуск SSH
 printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
 
 # Настройка firewall
-printf "\n\033[1;34m=== Нас��ройка firewall ===\033[0m\n"
+printf "\n\033[1;34m=== Настройка firewall ===\033[0m\n"
 case $fw_choice in
     2)
         # Настройка IPTables
@@ -374,10 +401,10 @@ chmod +x /root/check_tunnels.sh
 printf "\n\033[1;33m▶ Настройка автоматического мониторинга:\033[0m\n"
 printf "Скрипт мониторинга будет проверять состояние туннелей каждые 5 минут\n"
 printf "и записывать информацию о проблемах в системный лог\n\n"
-read -p "Добавить мониторинг в cron? (1 - да/2 - нет) [1]: " add_to_cron
+read -p "Добавить мониторинг в cron? (y - да/n - нет) [Y/n]: " add_to_cron
 add_to_cron=${add_to_cron:-1}
 
-if [ "$add_to_cron" = "1" ]; then
+if [ "$add_to_cron" = "y" ] || [ "$add_to_cron" = "Y" ]; then
     printf "\033[1;32m→ Добавление задания в cron...\033[0m\n"
     
     # Создаем временный файл
@@ -385,7 +412,7 @@ if [ "$add_to_cron" = "1" ]; then
     
     # Получаем текущие задания и добавляем новое
     (crontab -l 2>/dev/null; echo "*/5 * * * * /root/check_tunnels.sh") | \
-        # Удаляем пустые строки и комментарии
+        # У��аляем пустые строки и комментарии
         grep -v '^#\|^$' | \
         # Сортируем и оставляем только уникальные строки
         sort -u > "$temp_cron"
