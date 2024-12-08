@@ -31,8 +31,8 @@ for port in $TUNNEL_PORTS; do
     fi
 done
 
-# Проверка установленных файерволов
-printf "\n\033[1;34m=== Проверка файерволов ===\033[0m\n"
+# Проверка установленных firewall
+printf "\n\033[1;34m=== Проверка firewall ===\033[0m\n"
 printf "Сканирование системы...\n"
 UFW_INSTALLED=0
 IPTABLES_INSTALLED=0
@@ -57,20 +57,20 @@ if command -v iptables >/dev/null 2>&1; then
     iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
 fi
 
-printf "\n\033[1;34m=== Выбор файервола ===\033[0m\n"
+printf "\n\033[1;34m=== Выбор firewall ===\033[0m\n"
 printf "\033[1mДоступные опции:\033[0m\n\n"
-printf "\033[1m1) UFW - современный файервол, простой в управлении\033[0m\n"
+printf "\033[1m1) UFW - современный firewall, простой в управлении\033[0m\n"
 printf "   - Удобный интерфейс командной строки\n"
 printf "   - Простое управление правилами\n"
 printf "   - Автоматическое сохранение правил\n\n"
 
-printf "\033[1m2) IPTables - классический файервол Linux\033[0m\n"
+printf "\033[1m2) IPTables - классический firewall Linux\033[0m\n"
 printf "   - Более гибкая настройка\n"
 printf "   - Низкоуровневый контроль\n"
 printf "   - Меньше зависимостей\n"
 
 if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
-    printf "\nВыберите файервол для использования:\n"
+    printf "\nВыберите firewall для использования:\n"
     printf "1) UFW (рекомендуется, проще в управлении)\n"
     printf "2) IPTables (классический вариант)\n"
     read -p "Введите номер (1/2): " fw_choice
@@ -95,7 +95,7 @@ elif [ $IPTABLES_INSTALLED -eq 1 ]; then
         fw_choice=2
     fi
 else
-    printf "\nНи один файервол не установлен. Какой установить?\n"
+    printf "\nНи один firewall не установлен. Какой установить?\n"
     printf "1) UFW\n"
     printf "2) IPTables\n"
     read -p "Введите номер (1/2) [1]: " fw_choice
@@ -161,8 +161,8 @@ EOF
 printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
 
-# Настройка файервола
-printf "\n\033[1;34m=== Настройка файервола ===\033[0m\n"
+# Настройка firewall
+printf "\n\033[1;34m=== Настройка firewall ===\033[0m\n"
 case $fw_choice in
     2)
         # Настройка IPTables
@@ -356,11 +356,11 @@ printf "\n\033[1;33mПроверьте настройки:\033[0m\n"
 echo "1. SSH конфигурация: /etc/ssh/sshd_config"
 case $fw_choice in
     2)
-        echo "2. Файервол: iptables -L INPUT -n --line-numbers"
+        echo "2. Firewall: iptables -L INPUT -n --line-numbers"
         echo "   Сохраненные правила: cat /etc/iptables/rules.v4"
         ;;
     *)
-        echo "2. Файервол: ufw status"
+        echo "2. Firewall: ufw status"
         ;;
 esac
 echo "3. Fail2ban: fail2ban-client status"
