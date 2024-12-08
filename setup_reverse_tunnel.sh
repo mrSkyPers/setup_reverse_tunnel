@@ -338,7 +338,7 @@ touch /etc/ssh/ssh_config
 cleanup_config "/etc/ssh/ssh_config"
 cleanup_config "/etc/ssh/sshd_config"
 
-# Добавляем па��аметры без дублирования
+# Добавляем параметры без дублирования
 add_ssh_param "Host *" "" "/etc/ssh/ssh_config"
 add_ssh_param "    IdentityFile" "/root/.ssh/id_rsa" "/etc/ssh/ssh_config"
 add_ssh_param "    ServerAliveInterval" "30" "/etc/ssh/ssh_config"
