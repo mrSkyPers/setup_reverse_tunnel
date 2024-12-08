@@ -17,7 +17,7 @@ IPTABLES_INSTALLED=0
 if command -v ufw >/dev/null 2>&1; then
     UFW_STATUS=$(ufw status | grep -q "Status: active" && echo "активен" || echo "неактивен")
     UFW_INSTALLED=1
-    printf "UFW установлен и %s\n" "$UFW_STATUS"
+    printf "\nUFW установлен и %s\n" "$UFW_STATUS"
     printf "Текущие правила UFW:\n"
     ufw status numbered | grep -E "(22|$TUNNEL_PORTS)" | sed 's/^/  /'
 fi
@@ -25,10 +25,21 @@ fi
 if command -v iptables >/dev/null 2>&1; then
     IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | wc -l)
     IPTABLES_INSTALLED=1
-    printf "IPTables установлен, найдено правил: %s\n" "$IPTABLES_RULES"
+    printf "\nIPTables установлен, найдено правил: %s\n" "$IPTABLES_RULES"
     printf "Текущие правила IPTables:\n"
     iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
 fi
+
+printf "\nДоступные опции:\n"
+printf "1) UFW - современный файервол, простой в управлении\n"
+printf "   - Удобный интерфейс командной строки\n"
+printf "   - Простое управление правилами\n"
+printf "   - Автоматическое сохранение правил\n"
+
+printf "2) IPTables - классический файервол Linux\n"
+printf "   - Более гибкая настройка\n"
+printf "   - Низкоуровневый контроль\n"
+printf "   - Меньше зависимостей\n"
 
 if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
     printf "\nВыберите файервол для использования:\n"
@@ -36,15 +47,42 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
     printf "2) IPTables (классический вариант)\n"
     read -p "Введите номер (1/2): " fw_choice
 elif [ $UFW_INSTALLED -eq 1 ]; then
-    printf "\nБудет использован UFW\n"
-    fw_choice=1
+    printf "\nUFW уже установлен. Использовать его? [Y/n]: "
+    read -r use_ufw
+    if [ "$use_ufw" = "n" ] || [ "$use_ufw" = "N" ]; then
+        printf "Установка IPTables...\n"
+        apt install -y iptables-persistent
+        fw_choice=2
+    else
+        fw_choice=1
+    fi
 elif [ $IPTABLES_INSTALLED -eq 1 ]; then
-    printf "\nБудет использован IPTables\n"
-    fw_choice=2
+    printf "\nIPTables уже установлен. Использовать его? [Y/n]: "
+    read -r use_iptables
+    if [ "$use_iptables" = "n" ] || [ "$use_iptables" = "N" ]; then
+        printf "Установка UFW...\n"
+        apt install -y ufw
+        fw_choice=1
+    else
+        fw_choice=2
+    fi
 else
-    printf "\nУстановка UFW...\n"
-    apt install -y ufw
-    fw_choice=1
+    printf "\nНи один файервол не установлен. Какой установить?\n"
+    printf "1) UFW\n"
+    printf "2) IPTables\n"
+    read -p "Введите номер (1/2) [1]: " fw_choice
+    fw_choice=${fw_choice:-1}
+    
+    case $fw_choice in
+        2)
+            printf "Установка IPTables...\n"
+            apt install -y iptables-persistent
+            ;;
+        *)
+            printf "Установка UFW...\n"
+            apt install -y ufw
+            ;;
+    esac
 fi
 
 # Установка необходимых пакетов
