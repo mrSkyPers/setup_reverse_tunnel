@@ -242,8 +242,7 @@ install_package() {
     fi
 }
 
-# Проверка и установки необходимых пакетов
-install_package "fail2ban"
+# Установка необходимых пакетов
 install_package "net-tools"
 
 # Настройка SSH
@@ -318,35 +317,77 @@ case $fw_choice in
         # Очищаем все правила перед настройкой
         cleanup_firewall
         
-        # Настройка IPTables
-        printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
-        # Базовые правила
-        iptables -A INPUT -i lo -j ACCEPT
-        iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-        # SSH и туннели
-        iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-        for port in $TUNNEL_PORTS; do
-            printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
-            iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
+        # Проверяем существующие правила
+        printf "\033[1;32m→ Проверка существующих правил IPTables...\033[0m\n"
+        NEED_RULES=0
+        
+        # Проверяем базовые правила
+        if ! iptables -L INPUT -n | grep -q "ACCEPT.*state.*RELATED,ESTABLISHED"; then
+            NEED_RULES=1
+        fi
+        
+        # Проверяем правила для портов
+        for port in 22 $TUNNEL_PORTS; do
+            if ! iptables -L INPUT -n | grep -q "ACCEPT.*dpt:$port"; then
+                NEED_RULES=1
+                break
+            fi
         done
-        # Политика по умолчанию
-        iptables -P INPUT DROP
+        
+        if [ $NEED_RULES -eq 1 ]; then
+            printf "\033[1;32m→ Добавление новых правил...\033[0m\n"
+            cleanup_firewall
+            
+            # Настройка IPTables
+            printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
+            # Базовые правила
+            iptables -A INPUT -i lo -j ACCEPT
+            iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+            # SSH и туннели
+            iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+            for port in $TUNNEL_PORTS; do
+                printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
+                iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
+            done
+            # Политика по умолчанию
+            iptables -P INPUT DROP
+        else
+            printf "\033[1;32m✓ Все необходимые правила уже существуют\033[0m\n"
+        fi
         ;;
     *)
         # Очищаем все правила перед настройкой
         cleanup_firewall
         
-        # Настройка UFW
-        printf "\033[1;32m→ Настройка правил UFW...\033[0m\n"
-        ufw --force reset
-        ufw default deny incoming
-        ufw default allow outgoing
-        ufw allow 22/tcp
-        for port in $TUNNEL_PORTS; do
-            printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
-            ufw allow "$port/tcp"
+        # Проверяем существующие правила UFW
+        printf "\033[1;32m→ Проверка существующих правил UFW...\033[0m\n"
+        NEED_RULES=0
+        
+        # Проверяем правила для портов
+        for port in 22 $TUNNEL_PORTS; do
+            if ! ufw status | grep -q "$port/tcp.*ALLOW"; then
+                NEED_RULES=1
+                break
+            fi
         done
-        yes | ufw enable
+        
+        if [ $NEED_RULES -eq 1 ]; then
+            printf "\033[1;32m→ Добавление новых правил...\033[0m\n"
+            ufw --force reset
+            
+            # Настройка UFW
+            printf "\033[1;32m→ Настройка правил UFW...\033[0m\n"
+            ufw default deny incoming
+            ufw default allow outgoing
+            ufw allow 22/tcp
+            for port in $TUNNEL_PORTS; do
+                printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
+                ufw allow "$port/tcp"
+            done
+            yes | ufw enable
+        else
+            printf "\033[1;32m✓ Все необходимые правила уже существуют\033[0m\n"
+        fi
         ;;
 esac
 
