@@ -35,11 +35,17 @@ case $ssh_choice in
         if ! command -v ssh > /dev/null 2>&1; then
             printf '\n\033[32mУстановка OpenSSH...\033[0m\n'
             opkg update
-            opkg install openssh-server openssh-sftp-server
+            opkg install openssh-server openssh-sftp-server openssh-keygen
             /etc/init.d/sshd enable
             /etc/init.d/sshd start
         else
             printf '\n\033[32mOpenSSH уже установлен\033[0m\n'
+            # Проверяем наличие ssh-keygen
+            if ! command -v ssh-keygen > /dev/null 2>&1; then
+                printf '\n\033[32mУстановка openssh-keygen...\033[0m\n'
+                opkg update
+                opkg install openssh-keygen
+            fi
         fi
         ;;
 esac
@@ -146,16 +152,35 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Копирование публичного ключа на VPS
     printf '\n\033[32mКопирование публичного ключа на VPS...\033[0m\n'
+    # Создаем директорию .ssh если её нет
+    mkdir -p /root/.ssh
+    
+    # Очищаем старые записи хоста
+    sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
+    
+    # Автоматически добавляем хост в known_hosts
+    printf '\n\033[32mДобавление хоста в доверенные...\033[0m\n'
+    ssh-keyscan -H -p "$ssh_port" "$vps_ip" >> /root/.ssh/known_hosts 2>/dev/null
+    
     if [ "$ssh_choice" = "2" ]; then
         # Для Dropbear используем cat и ssh для копирования ключа
         KEY=$(cat /root/.ssh/id_rsa.pub)
-        printf '%s\n' "$KEY" | ssh -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
-            printf "yes\n" | sshpass -p "$vps_password" ssh -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && echo '$KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+        printf '%s\n' "$KEY" | sshpass -p "$vps_password" ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
+            printf "\033[1;31m✗ Ошибка при копировании ключа\033[0m\n"
+            exit 1
         }
     else
         # Для OpenSSH используем ssh-copy-id
-        sshpass -p "$vps_password" ssh-copy-id -o StrictHostKeyChecking=no -f -p "$ssh_port" "${vps_user}@${vps_ip}"
+        sshpass -p "$vps_password" ssh-copy-id -f -p "$ssh_port" "${vps_user}@${vps_ip}"
     fi
+    
+    # Проверяем успешность копирования
+    printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
+    if ! ssh -q -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+        printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
+        exit 1
+    fi
+    printf '\033[32m✓ Подключение по ключу работает\033[0m\n'
 fi
 
 # Создание скрипта автозапуска
