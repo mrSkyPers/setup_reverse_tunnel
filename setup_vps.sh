@@ -1,453 +1,440 @@
 #!/bin/sh
 
-# Проверка прав root
-if [ "$(id -u)" -ne 0 ]; then 
-    echo "Запустите скрипт от имени root"
-    exit 1
+# Установка цветов для вывода
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+printf '\033[34mНастройка обратного SSH-туннеля для OpenWRT\033[0m\n\n'
+
+# Выбор SSH сервера
+printf '\033[33mВыберите SSH сервер:\033[0m\n'
+echo "1) OpenSSH (рекомендуется)"
+echo "2) Dropbear (установлен по умолчанию, меньше нагрузки на сервер)"
+read -p "Введите номер (1/2): " ssh_choice
+
+case $ssh_choice in
+    2)
+        if ! command -v dropbear > /dev/null 2>&1; then
+            printf '\n\033[32mУстановка Dropbear...\033[0m\n'
+            opkg update
+            opkg install dropbear
+            /etc/init.d/dropbear enable
+            /etc/init.d/dropbear start
+        else
+            printf '\n\033[32mDropbear уже установлен\033[0m\n'
+        fi
+        ;;
+    *)
+        if ! command -v ssh > /dev/null 2>&1; then
+            printf '\n\033[32mУстановка OpenSSH...\033[0m\n'
+            opkg update
+            opkg install openssh-server openssh-sftp-server
+            /etc/init.d/sshd enable
+            /etc/init.d/sshd start
+        else
+            printf '\n\033[32mOpenSSH уже установлен\033[0m\n'
+        fi
+        ;;
+esac
+
+# Установка sshpass для автоматического ввода пароля
+if ! command -v sshpass &> /dev/null; then
+    printf '\n\033[32mУстановка sshpass...\033[0m\n'
+    opkg update
+    opkg install sshpass
+else
+    printf '\n\033[32msshpass уже установлен\033[0m\n'
 fi
 
-# Запрос портов для туннелей
-printf "\n\033[1;34m=== Настройка портов туннелей ===\033[0m\n"
-printf "Диапазоны портов:\n"
-printf "  0-1023: системные порты (не рекомендуется)\n"
-printf "  1024-49151: пользовательские порты (рекомендуется)\n"
-printf "  49152-65535: динамические порты (для временных соединений)\n"
+# Установка netcat для проверки доступности
+if ! command -v nc &> /dev/null; then
+    printf '\n\033[32mУстановка netcat...\033[0m\n'
+    opkg update
+    opkg install netcat
+else
+    printf '\n\033[32mnetcat уже установлен\033[0m\n'
+fi
 
-# Функция проверки портов
-check_ports() {
-    local ports="$1"
-    local has_error=0
-    
-    for port in $ports; do
-        if [ "$port" -lt 1024 ]; then
-            printf "\n\033[1;31m✗ Ошибка: Порт %s является системным (0-1023)\033[0m\n" "$port"
-            printf "Рекомендуется использовать порты из диапазона 1024-49151\n"
-            has_error=1
-        elif [ "$port" -gt 49151 ]; then
-            printf "\n\033[1;33m⚠ Предупреждение: Порт %s находится в диапазоне динамических портов (49152-65535)\033[0m\n" "$port"
-            printf "Рекомендуется использовать пользовательские порты (1024-49151)\n"
-            read -p "Продолжить? (1 - да/2 - нет) [2]: " continue_anyway
-            if [ "$continue_anyway" != "1" ]; then
-                has_error=1
+# Запрос данных VPS
+if [ -f /etc/config/reverse-tunnel ]; then
+    printf '\n\033[33mОбнаружена существующая конфигурация туннеля.\033[0m\n'
+    read -p "Хотите использовать существующую конфигурацию? (y/N): " use_existing
+    if [ "$use_existing" = "y" ] || [ "$use_existing" = "Y" ]; then
+        # Проверяем наличие секции general
+        if ! uci show reverse-tunnel.@general[0] >/dev/null 2>&1; then
+            printf '\n\033[33mОшибка: конфигурация повреждена, создаём новую...\033[0m\n'
+            mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.broken
+            use_existing="n"
+        else
+            # Проверяем наличие всех необходимых опций
+            vps_ip=$(uci -q get reverse-tunnel.general.vps_ip)
+            vps_user=$(uci -q get reverse-tunnel.general.vps_user)
+            ssh_port=$(uci -q get reverse-tunnel.general.ssh_port)
+            
+            if [ -z "$vps_ip" ] || [ -z "$vps_user" ] || [ -z "$ssh_port" ]; then
+                printf '\n\033[33mОшибка: не все параметры настроены, создаём новую конфигурацию...\033[0m\n'
+                mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.broken
+                use_existing="n"
+            else
+                echo "Загружена конфигурация:"
+                echo "VPS IP: ${vps_ip}"
+                echo "Пользователь: ${vps_user}"
+                echo "SSH порт: ${ssh_port}"
             fi
         fi
-    done
-    
-    return $has_error
-}
-
-# Цикл ввода портов
-while true; do
-    read -p "Введите порты для туннелей через пробел (например: 10022 10080): " TUNNEL_PORTS
-    
-    if check_ports "$TUNNEL_PORTS"; then
-        break
     else
-        printf "\n\033[1;33mПожалуйста, введите порты заново.\033[0m\n\n"
+        printf '\n\033[33mСоздание новой конфигурации...\033[0m\n'
+        mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.backup
+        echo "Предыдущая конфигурация сохранена как /etc/config/reverse-tunnel.backup"
     fi
+fi
+
+if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
+    read -p "Введите IP-адрес VPS сервера: " vps_ip
+    read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
+    ssh_port=${ssh_port:-22}
+    read -p "Введите имя пользователя на VPS: " vps_user
+    read -s -p "Введите пароль пользователя на VPS: " vps_password
+    echo ""
+
+    # Проверка доступности VPS
+    printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
+    if ! nc -z -w5 "$vps_ip" "$ssh_port" >/dev/null 2>&1; then
+        printf "\n\033[1;31m✗ Ошибка: Не удалось подключиться к VPS!\033[0m\n"
+        printf "Проверьте:\n"
+        printf "1. Правильность IP адреса и порта\n"
+        printf "2. Доступность VPS сервера\n"
+        printf "3. Работу SSH сервера на VPS\n"
+        printf "4. Настройки firewall на VPS\n"
+        exit 1
+    fi
+    printf "\033[32m✓ VPS доступен\033[0m\n"
+fi
+
+# Массив для хранения туннелей (в sh нет массивов, используем строки)
+tunnel_ports=""
+local_ports=""
+local_hosts=""
+
+# Запрос количества туннелей
+read -p "Сколько туннелей вы хотите настроить? " tunnel_count
+
+i=1
+while [ $i -le $tunnel_count ]; do
+    printf '\n\033[33mНастройка туннеля %d:\033[0m\n' "$i"
+    read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
+    read -p "Введите локальный порт для туннеля $i (например 22): " local_port
+    read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
+    local_host=${local_host:-localhost}
+    tunnel_ports="$tunnel_ports $remote_port"
+    local_ports="$local_ports $local_port"
+    local_hosts="$local_hosts $local_host"
+    i=$((i + 1))
 done
 
-# Проверка установленных firewall
-printf "\n\033[1;34m=== Проверка firewall ===\033[0m\n"
-printf "Сканирование системы...\n"
-UFW_INSTALLED=0
-IPTABLES_INSTALLED=0
-UFW_ACTIVE=0
-
-if command -v ufw >/dev/null 2>&1; then
-    UFW_STATUS=$(ufw status | grep -q "Status: active" && echo "активен" || echo "неактивен")
-    UFW_INSTALLED=1
-    if [ "$UFW_STATUS" = "активен" ]; then
-        UFW_ACTIVE=1
-    fi
-    printf "\n\033[1;32m→ UFW установлен и %s\033[0m\n" "$UFW_STATUS"
-    printf "\033[1mТекущие правила UFW:\033[0m\n"
-    ufw status numbered | grep -E "(22|$TUNNEL_PORTS)" | sed 's/^/  /'
-fi
-
-if command -v iptables >/dev/null 2>&1; then
-    IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | wc -l)
-    IPTABLES_INSTALLED=1
-    printf "\n\033[1;32m→ IPTables установлен, найдено правил: %s\033[0m\n" "$IPTABLES_RULES"
-    printf "\033[1mТекущие правила IPTables:\033[0m\n"
-    iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
-fi
-
-printf "\n\033[1;34m=== Выбор firewall ===\033[0m\n"
-printf "\033[1mДоступные опции:\033[0m\n\n"
-printf "\033[1m1) UFW - современный firewall, простой в управлении\033[0m\n"
-printf "   - Удобный интерфейс командной строки\n"
-printf "   - Простое управление правилами\n"
-printf "   - Автоматическое сохранение правил\n\n"
-
-printf "\033[1m2) IPTables - классический firewall Linux\033[0m\n"
-printf "   - Более гибкая настройка\n"
-printf "   - Низкоуровневый контроль\n"
-printf "   - Меньше зависимостей\n"
-
-if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
-    CHOICE_MADE=0
-    # Проверяем наличие активных правил
-    UFW_RULES=$(ufw status numbered | grep -E "(ALLOW|DENY)" | wc -l)
-    IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "ACCEPT|DROP" | wc -l)
-    
-    if [ $UFW_RULES -gt 0 ] && [ $IPTABLES_RULES -gt 0 ]; then
-        printf "\n\033[1;33m⚠ Внимание: Обнаружены правила в обоих firewall!\033[0m\n"
-        printf "Это может привести к конфликтам и непредсказуемому поведению.\n\n"
-        printf "\033[1mРекомендуемые действия:\033[0m\n"
-        printf "1) Использовать UFW (текущие правила IPTables будут очищены)\n"
-        printf "2) Использовать IPTables (UFW будет отключен)\n"
-        printf "3) Выйти и разобраться с правилами вручную\n\n"
-        read -p "Выберите действие (1/2/3): " clean_choice
-        
-        case $clean_choice in
-            1)
-                # Создаем директорию для бэкапов если её нет
-                backup_dir="/root/firewall_backup"
-                mkdir -p "$backup_dir"
-                
-                # Создаем бэкап с временной меткой
-                timestamp=$(date +%Y%m%d_%H%M%S)
-                
-                printf "\n\033[1;34m→ Создание резервной копии правил IPTables...\033[0m\n"
-                iptables-save > "$backup_dir/iptables_backup_$timestamp.rules"
-                printf "Backup сохранен в: \033[32m%s\033[0m\n" "$backup_dir/iptables_backup_$timestamp.rules"
-                
-                printf "\n\033[1;34m→ Очистка правил IPTables...\033[0m\n"
-                iptables -F
-                iptables -X
-                iptables -P INPUT ACCEPT
-                iptables -P FORWARD ACCEPT
-                iptables -P OUTPUT ACCEPT
-                fw_choice=1
-                CHOICE_MADE=1
-                ;;
-            2)
-                # Создаем директорию для бэкапов если её нет
-                backup_dir="/root/firewall_backup"
-                mkdir -p "$backup_dir"
-                
-                # Создаем бэкап с временной меткой
-                timestamp=$(date +%Y%m%d_%H%M%S)
-                
-                printf "\n\033[1;34m→ Создание резервной копии правил UFW...\033[0m\n"
-                ufw status numbered > "$backup_dir/ufw_backup_$timestamp.rules"
-                printf "Backup сохранен в: \033[32m%s\033[0m\n" "$backup_dir/ufw_backup_$timestamp.rules"
-                
-                printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
-                ufw disable
-                printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
-                apt remove -y ufw >/dev/null 2>&1
-                fw_choice=2
-                CHOICE_MADE=1
-                ;;
-            *)
-                printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
-                printf "Пожалуйста, проверьте и очистите правила firewall вручную:\n"
-                printf "UFW: ufw status numbered\n"
-                printf "IPTables: iptables -L INPUT -n --line-numbers\n"
-                printf "\nДля восстановления правил из backup используйте:\n"
-                printf "IPTables: iptables-restore < /path/to/backup.rules\n"
-                printf "UFW: ufw enable && cat /path/to/backup.rules | while read rule; do ufw \$rule; done\n"
-                exit 1
-                ;;
-        esac
-    fi
-    
-    if [ $CHOICE_MADE -eq 0 ]; then
-        printf "\nВыберите firewall для использования:\n"
-        printf "1) UFW (рекомендуется, проще в управлении)\n"
-        printf "2) IPTables (классический вариант)\n"
-        read -p "Введите номер (1/2): " fw_choice
-    fi
-elif [ $UFW_INSTALLED -eq 1 ]; then
-    printf "\nUFW уже установлен. Использовать его? [Y/n]: "
-    read -r use_ufw
-    if [ "$use_ufw" = "n" ] || [ "$use_ufw" = "N" ]; then
-        printf "Установка IPTables...\n"
-        apt install -y iptables-persistent
-        fw_choice=2
-    else
-        fw_choice=1
-    fi
-elif [ $IPTABLES_INSTALLED -eq 1 ]; then
-    printf "\nIPTables уже установлен. Использовать его? [Y/n]: "
-    read -r use_iptables
-    if [ "$use_iptables" = "n" ] || [ "$use_iptables" = "N" ]; then
-        printf "Установка UFW...\n"
-        apt install -y ufw
-        fw_choice=1
-    else
-        fw_choice=2
+# Создание SSH-ключей
+printf '\n\033[32mГенерация SSH-ключей...\033[0m\n'
+if [ "$ssh_choice" = "2" ]; then
+    # Использование dropbearkey для Dropbear
+    if [ ! -f /root/.ssh/id_rsa ]; then
+        mkdir -p /root/.ssh
+        dropbearkey -t rsa -f /root/.ssh/id_rsa
+        # Конвертация публичного ключа в формат OpenSSH
+        dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" > /root/.ssh/id_rsa.pub
     fi
 else
-    printf "\nНи один firewall не установлен. Ка��ой установить?\n"
-    printf "1) UFW\n"
-    printf "2) IPTables\n"
-    read -p "Введите номер (1/2) [1]: " fw_choice
-    fw_choice=${fw_choice:-1}
+    # Использование ssh-keygen для OpenSSH
+    if [ ! -f /root/.ssh/id_rsa ]; then
+        ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
+    fi
+fi
+
+# Копирование публичного ключа на VPS
+printf '\n\033[32mКопирование публичного ключа на VPS...\033[0m\n'
+# Создаем директорию .ssh если её нет
+mkdir -p /root/.ssh
+
+# Для Dropbear создаем пустой known_hosts, чтобы пропустить проверку
+if [ "$ssh_choice" = "2" ]; then
+    touch /root/.ssh/known_hosts
+else
+    # Для OpenSSH используем стандартный подход
+    # Очищаем старые записи для этого хоста
+    sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
+    # Добавляем все типы ключей хоста
+    for type in rsa ecdsa ed25519; do
+        ssh-keyscan -t $type -p $ssh_port $vps_ip >> /root/.ssh/known_hosts 2>/dev/null
+    done
+fi
+
+if [ "$ssh_choice" = "2" ]; then
+    # Для Dropbear используем cat и ssh дя копирования ключа
+    KEY=$(cat /root/.ssh/id_rsa.pub)
+    # Сначала пробуем напрямую скопировать ключ
+    printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
+        # Если не получилось, используем sshpass
+        printf "yes\n" | sshpass -p "$vps_password" ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && echo '$KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    }
+else
+    # Для OpenSSH используем ssh-copy-id
+    # Затем копируем ключ
+    sshpass -p "$vps_password" ssh-copy-id -o StrictHostKeyChecking=no -f -p $ssh_port "${vps_user}@${vps_ip}"
+fi
+
+# Создание скрипта автозапуска
+cat > /etc/init.d/reverse-tunnel << EOF
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=15
+USE_PROCD=1
+
+PROG=/usr/bin/ssh
+CONFIGFILE=/etc/config/reverse-tunnel
+
+start_service() {
+    config_load reverse-tunnel
     
-    case $fw_choice in
-        2)
-            printf "Установка IPTables...\n"
-            apt install -y iptables-persistent
+    procd_open_instance
+    procd_set_param command \$PROG -NT -i /root/.ssh/id_rsa \\
+EOF
+
+# Добавление всех туннелей в команду
+for remote_port in $tunnel_ports; do
+    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    echo "        -R ${remote_port}:${local_host}:${local_port} \\" >> /etc/init.d/reverse-tunnel
+done
+
+cat >> /etc/init.d/reverse-tunnel << EOF
+        ${vps_user}@${vps_ip} -p ${ssh_port}
+    
+    procd_set_param respawn 3600 5 0
+    procd_set_param stderr 1
+    procd_set_param stdout 1
+    procd_close_instance
+}
+
+service_triggers() {
+    procd_add_reload_trigger "reverse-tunnel"
+}
+
+reload_service() {
+    stop
+    start
+}
+EOF
+
+# Создание конфигурационного файла
+mkdir -p /etc/config
+cat > /etc/config/reverse-tunnel << EOF
+config reverse-tunnel 'general'
+    option enabled '1'
+    option ssh_port '${ssh_port}'
+    option vps_user '${vps_user}'
+    option vps_ip '${vps_ip}'
+EOF
+
+# Добавление туннелей в конфиг
+for remote_port in $tunnel_ports; do
+    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    cat >> /etc/config/reverse-tunnel << EOF
+config tunnel
+    option remote_port '${remote_port}'
+    option local_port '${local_port}'
+    option local_host '${local_host}'
+EOF
+done
+
+# Установка прав и включение автозапуска
+chmod +x /etc/init.d/reverse-tunnel
+/etc/init.d/reverse-tunnel enable
+/etc/init.d/reverse-tunnel start
+
+printf '\n\033[32mНастройка завершена!\033[0m\n'
+printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
+
+for remote_port in $tunnel_ports; do
+    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    printf "Туннель %d: ssh -p %d root@localhost (-> %s:%d)\n" "$i" "$remote_port" "$local_host" "$local_port"
+    i=$((i + 1))
+done
+
+printf '\n\033[33mСозданные файлы и конфигурации:\033[0m\n'
+printf "\n1. Основные конфигурационные файлы:\n"
+printf "   - Конфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
+printf "   - Скрипт автозапуска: \033[32m/etc/init.d/reverse-tunnel\033[0m\n"
+
+printf "\n2. SSH конфигурация:\n"
+if [ "$ssh_choice" = "2" ]; then
+    printf "   - Конфигурация Dropbear: \033[32m/etc/config/dropbear\033[0m\n"
+else
+    printf "   - Конфигурация OpenSSH: \033[32m/etc/config/sshd\033[0m\n"
+fi
+printf "   - SSH ключи: \033[32m/root/.ssh/id_rsa\033[0m (приватный) и \033[32m/root/.ssh/id_rsa.pub\033[0m (публичный)\n"
+printf "   - Настройки SSH клиента: \033[32m/etc/ssh/ssh_config\033[0m\n"
+
+printf '\n\033[33mУправление службой:\033[0m\n'
+printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n"
+printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
+printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
+printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
+printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
+printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
+printf "Ручной запуск с отладкой: \033[32mssh -vvv -NT -R ${remote_port}:${local_host}:${local_port} ${vps_user}@${vps_ip} -p ${ssh_port}\033[0m\n"
+
+printf '\n\033[33mРедактирование конфигурации через UCI:\033[0m\n'
+printf "Просмотр настроек:     \033[32muci show reverse-tunnel\033[0m\n"
+printf "Изменение настроек:    \033[32muci set reverse-tunnel.@general[0].vps_ip='новый_ip'\033[0m\n"
+printf "Применение изменений:  \033[32muci commit reverse-tunnel\033[0m\n"
+
+printf '\n\033[33mРезервное копирование:\033[0m\n'
+if [ -f /etc/config/reverse-tunnel.backup ]; then
+    printf "Резервная копия предыдущей конфигурации: \033[32m/etc/config/reverse-tunnel.backup\033[0m\n"
+fi
+
+# Проверка существования директорий и файлов конфигурации
+mkdir -p /etc/ssh
+mkdir -p /etc/default
+
+# Функция для удаления дублирующихся строк в файле
+cleanup_config() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        printf "\033[32m→ Очистка дублирующихся строк в %s...\033[0m\n" "$file"
+        # Создаем временный файл
+        temp_file=$(mktemp)
+        # Оставляем только последнее вхождение каждой строки, сохраняя порядок
+        awk '!seen[$0]++' "$file" > "$temp_file"
+        # Заменяем оригинальный файл очищенным
+        mv "$temp_file" "$file"
+    fi
+}
+
+# Функция для добавления параметра SSH если он отсутствует
+add_ssh_param() {
+    local param="$1"
+    local value="$2"
+    local file="$3"
+    if ! grep -q "^$param" "$file"; then
+        echo "$param $value" >> "$file"
+    fi
+}
+
+# Создаем файл если он не существует
+touch /etc/ssh/ssh_config
+
+# Очищаем конфиги от дублирующихся строк
+cleanup_config "/etc/ssh/ssh_config"
+cleanup_config "/etc/ssh/sshd_config"
+
+# Добавляем параметры без дублирования
+add_ssh_param "Host *" "" "/etc/ssh/ssh_config"
+add_ssh_param "    IdentityFile" "/root/.ssh/id_rsa" "/etc/ssh/ssh_config"
+add_ssh_param "    ServerAliveInterval" "30" "/etc/ssh/ssh_config"
+add_ssh_param "    ServerAliveCountMax" "3" "/etc/ssh/ssh_config"
+
+# Проверяем и добавляем параметры в sshd_config
+touch /etc/ssh/sshd_config
+add_ssh_param "GatewayPorts" "yes" "/etc/ssh/sshd_config"
+add_ssh_param "AllowTcpForwarding" "yes" "/etc/ssh/sshd_config"
+add_ssh_param "ClientAliveInterval" "30" "/etc/ssh/sshd_config"
+add_ssh_param "ClientAliveCountMax" "3" "/etc/ssh/sshd_config"
+
+# Настройка файервола
+printf '\n\033[32mПроверка настроек файервола...\033[0m\n'
+
+# Проверяем, установлен ли файервол
+if ! command -v fw3 &> /dev/null; then
+    printf '\033[33mФайервол не установлен. Установка...\033[0m\n'
+    opkg update
+    opkg install firewall
+fi
+
+# Функция для проверки, является ли IP адрес локальным
+is_local_ip() {
+    local ip=$1
+    # Если это localhost или IP совпадает с LAN IP
+    if [ "$ip" = "localhost" ]; then
+        return 0
+    fi
+    
+    # Проверяем, является ли IP адрес локальным (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    case "$ip" in
+        192.168.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            return 0
             ;;
         *)
-            printf "Установка UFW...\n"
-            apt install -y ufw
+            return 1
             ;;
     esac
-fi
-
-# Предупреждение о конфликтах
-if [ $UFW_ACTIVE -eq 1 ] && [ "$fw_choice" = "2" ]; then
-    printf "\n\033[1;33m⚠ Внимание: Обнаружен конфликт!\033[0m\n"
-    printf "\033[33mUFW активен и управляет правилами iptables!\033[0m\n"
-    printf "Использование iptables напрямую может привести к конфликтам.\n\n"
-    
-    printf "\033[1mВыберите действие:\033[0m\n"
-    printf "1) Только отключить UFW\n"
-    printf "2) Отключить и удалить UFW\n"
-    printf "3) Продолжить с активным UFW\n"
-    read -p "Выберите действие (1/2/3): " disable_ufw
-    if [ "$disable_ufw" = "1" ]; then
-        printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
-        ufw disable
-    elif [ "$disable_ufw" = "2" ]; then
-        printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
-        ufw disable
-        printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
-        apt remove -y ufw
-    else
-        printf "\n\033[1;33m⚠ Предупреждение: Продолжение с активным UFW может привести к проблемам!\033[0m\n"
-        read -p "Продолжить? (1 - да/2 - нет) [2]: " continue_anyway
-        if [ "$continue_anyway" != "1" ]; then
-            printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
-            exit 1
-        fi
-    fi
-fi
-
-# Установка необходимых пакетов
-printf "\n\033[1;34m=== Установка дополнительных пакетов ===\033[0m\n"
-
-# Функция для проверки и установки пакета
-install_package() {
-    local package=$1
-    if ! dpkg -l | grep -q "^ii  $package "; then
-        printf "\033[1;32m→ Установка %s...\033[0m\n" "$package"
-        apt install -y "$package" >/dev/null 2>&1
-    else
-        printf "\033[1;32m✓ Пакет %s уже установлен\033[0m\n" "$package"
-    fi
+    return 1
 }
 
-# Проверка и установ��а необходимых пакетов
-install_package "fail2ban"
-install_package "net-tools"
+# Создаем временный файл для новых правил
+cat > /tmp/firewall.reverse-tunnel << EOF
+# Reverse tunnel firewall rules
+config rule
+    option name 'Allow-SSH-In'
+    option target 'ACCEPT'
+    option src 'wan'
+    option proto 'tcp'
+    option dest_port '22'
 
-# Настройка SSH
-printf "\n\033[1;34m=== Настройка SSH ===\033[0m\n"
-printf "\033[1;32m→ Обновление конфигурации SSH...\033[0m\n"
-cat >> /etc/ssh/sshd_config << EOF
-GatewayPorts yes
-AllowTcpForwarding yes
-ClientAliveInterval 30
-ClientAliveCountMax 3
 EOF
 
-# Перезапуск SSH
-printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
-systemctl restart sshd
+# Добавляем правила для каждого туннеля
+for remote_port in $tunnel_ports; do
+    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+    if is_local_ip "$local_host"; then
+        cat >> /tmp/firewall.reverse-tunnel << EOF
+config rule
+    option name 'Allow-Tunnel-${remote_port}'
+    option target 'ACCEPT'
+    option src 'wan'
+    option proto 'tcp'
+    option dest_port '${local_port}'
 
-# Настройка firewall
-printf "\n\033[1;34m=== Нас��ройка firewall ===\033[0m\n"
-case $fw_choice in
-    2)
-        # Настройка IPTables
-        # Очистка существующих правил для SSH и туннелей
-        printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
-        for port in 22 $TUNNEL_PORTS; do
-            iptables -D INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null
-        done
-        
-        # Добавление новых правил
-        iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-        for port in $TUNNEL_PORTS; do
-            printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
-            iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
-        done
-        
-        # Сохранение правил
-        printf "\033[1;32m→ Сохранение правил IPTables...\033[0m\n"
-        mkdir -p /etc/iptables
-        if [ -x "$(command -v iptables-save)" ]; then
-            iptables-save > /etc/iptables/rules.v4
-        else
-            apt install -y iptables-persistent
-            iptables-save > /etc/iptables/rules.v4
-        fi
-        ;;
-    *)
-        # Настройка UFW
-        printf "\033[1;32m→ Настройка правил UFW...\033[0m\n"
-        ufw default deny incoming
-        ufw default allow outgoing
-        ufw allow 22/tcp
-        
-        for port in $TUNNEL_PORTS; do
-            printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
-            ufw allow "$port/tcp"
-        done
-        
-        printf "\033[1;32m→ Активация UFW...\033[0m\n"
-        yes | ufw enable
-        ;;
-esac
-
-# Настройка параметров ядра
-printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
-printf "\033[1;32m→ Очистка дублирующихся параметров...\033[0m\n"
-
-# Создаем временный файл
-temp_file=$(mktemp)
-
-# Оставляем только последнее вхождение каждого параметра
-awk '!seen[$1]++ { line[++count] = $0 } END { for(i=1;i<=count;i++) print line[i] }' /etc/sysctl.conf > "$temp_file"
-
-# Заменяем оригинальный файл очищенным
-mv "$temp_file" /etc/sysctl.conf
-
-# Функция для безопасного добавления параметров
-add_sysctl_param() {
-    param=$1
-    value=$2
-    if ! grep -q "^$param\s*=" /etc/sysctl.conf; then
-        echo "$param=$value" >> /etc/sysctl.conf
-    fi
-}
-
-# Добавляем параметры только если их нет
-add_sysctl_param "net.ipv4.ip_forward" "1"
-add_sysctl_param "net.ipv4.tcp_max_syn_backlog" "65535"
-
-# Применяем изменения
-sysctl -p 2>/dev/null || true
-
-# Создание скрипта мониторинга
-printf "\n\033[1;34m=== Настройка мониторинга ===\033[0m\n"
-printf "\033[1;32m→ Создание скрипта мониторинга...\033[0m\n"
-cat > /root/check_tunnels.sh << 'EOF'
-#!/bin/sh
-
-printf "Проверка статуса туннелей...\n\n"
-
-# Получаем список портов из конфигурации
-PORTS=$(netstat -tlpn | grep ssh | awk '{print $4}' | cut -d: -f2)
-
-if [ -z "$PORTS" ]; then
-    printf "Активных SSH туннелей не обнаружено\n"
-    logger "No active SSH tunnels found"
-    exit 1
-fi
-
-printf "Обнаружены порты: %s\n\n" "$PORTS"
-
-# Проверка активных туннелей
-FOUND=0
-for port in $PORTS; do
-    if ! netstat -an | grep "LISTEN" | grep ":$port " > /dev/null; then
-        printf "\033[31m✗ Туннель на порту %s не активен\033[0m\n" "$port"
-        logger "Reverse tunnel on port $port is down"
-    else
-        printf "\033[32m✓ Туннель на порту %s активен\033[0m\n" "$port"
-        FOUND=$((FOUND + 1))
+EOF
     fi
 done
 
-printf "\nИтого: активно %d из %d туннелей\n" "$FOUND" "$(echo "$PORTS" | wc -w)"
-EOF
-
-chmod +x /root/check_tunnels.sh
-
-# Добавление задания в cron
-printf "\n\033[1;33m▶ Настройка автоматического мониторинга:\033[0m\n"
-printf "Скрипт мониторинга будет проверять состояние туннелей каждые 5 минут\n"
-printf "и записывать информацию о проблемах в системный лог\n\n"
-read -p "Добавить мониторинг в cron? (1 - да/2 - нет) [1]: " add_to_cron
-add_to_cron=${add_to_cron:-1}
-
-if [ "$add_to_cron" = "1" ]; then
-    printf "\033[1;32m→ Добавление задания в cron...\033[0m\n"
-    
-    # Создаем временный файл
-    temp_cron=$(mktemp)
-    
-    # Получаем текущие задания и добавляем новое
-    (crontab -l 2>/dev/null; echo "*/5 * * * * /root/check_tunnels.sh") | \
-        # Удаляем пустые строки и комментарии
-        grep -v '^#\|^$' | \
-        # Сортируем и оставляем только уникальные строки
-        sort -u > "$temp_cron"
-    
-    # Устанавливаем обновленный crontab
-    crontab "$temp_cron"
-    
-    # Удаляем временный файл
-    rm -f "$temp_cron"
-    
-    printf "\033[1;32m→ Текущие задания в cron:\033[0m\n"
-    crontab -l | grep -v '^#\|^$' | sed 's/^/  /'
+# Проверяем существующие правила
+NEED_RELOAD=0
+if [ -f /etc/config/firewall ]; then
+    for remote_port in $tunnel_ports; do
+        if ! grep -q "Allow-Tunnel-${remote_port}" /etc/config/firewall; then
+            NEED_RELOAD=1
+            break
+        fi
+    done
 else
-    printf "\n\033[1;33m▶ Для ручного мониторинга используйте команду:\033[0m\n"
-    printf "  /root/check_tunnels.sh\n\n"
-    printf "Для добавления в cron позже:\n"
-    printf "1. Выполните: crontab -e\n"
-    printf "2. Добавьте строку: */5 * * * * /root/check_tunnels.sh\n"
+    NEED_RELOAD=1
 fi
 
-# Настройка fail2ban
-printf "\n\033[1;34m=== Настройка защиты от брутфорса ===\033[0m\n"
-printf "\033[1;32m→ Настройка fail2ban...\033[0m\n"
-cat > /etc/fail2ban/jail.local << EOF
-[sshd]
-enabled = true
-port = ssh
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 3
-findtime = 300
-bantime = 3600
-EOF
+# Если нужны новые правила, добавляем их
+if [ $NEED_RELOAD -eq 1 ]; then
+    printf '\033[33mДобавление новых правил файервола...\033[0m\n'
+    cat /tmp/firewall.reverse-tunnel >> /etc/config/firewall
+    
+    # Перезапускаем файервол
+    printf '\033[32mПерезапуск файервола...\033[0m\n'
+    /etc/init.d/firewall restart
+else
+    printf '\033[32mВсе необходимые правила файервола уже настроены\033[0m\n'
+fi
 
-systemctl restart fail2ban
+# Удаляем временный файл
+rm /tmp/firewall.reverse-tunnel
 
-printf "\n\033[1;32m"
-printf "╔════════════════════════════════════════╗\n"
-printf "║         Настройка VPS завершена        ║\n"
-printf "╚════════════════════════════════════════╝\033[0m\n"
-
-printf "\nОткрытые порты:\n"
-case $fw_choice in
-    2)
-        iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
-        ;;
-    *)
-        ufw status numbered | grep ALLOW | sed 's/^/  /'
-        ;;
-esac
-
-printf "\n\033[1;33m▶ Проверьте настройки:\033[0m\n"
-echo "1. SSH конфигурация: /etc/ssh/sshd_config"
-case $fw_choice in
-    2)
-        echo "2. Firewall: iptables -L INPUT -n --line-numbers"
-        echo "   Сохраненные правила: cat /etc/iptables/rules.v4"
-        ;;
-    *)
-        echo "2. Firewall: ufw status"
-        ;;
-esac
-echo "3. Fail2ban: fail2ban-client status"
-echo "4. Скрипт мониторинга: /root/check_tunnels.sh"
-echo "5. Cron задания: crontab -l" 
+# Добавляем информацию о файерволе в вывод
+printf '\n\033[33mНастройки файервола:\033[0m\n'
+printf "Конфигурация файервола: \033[32m/etc/config/firewall\033[0m\n"
+printf "Управление файерволом:\n"
+printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
+printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
