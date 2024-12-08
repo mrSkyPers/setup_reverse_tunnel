@@ -115,7 +115,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     i=1
     while [ $i -le $tunnel_count ]; do
-        printf '\n\033[33mНа��тройка туннеля %d:\033[0m\n' "$i"
+        printf '\n\033[33mНастройка туннеля %d:\033[0m\n' "$i"
         read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
         read -p "Введите локальный порт для туннеля $i (например 22): " local_port
         read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
@@ -237,17 +237,19 @@ config reverse-tunnel 'general'
     option vps_ip '${vps_ip}'
 EOF
 
-# Добавление туннелей в конфиг
-for remote_port in $tunnel_ports; do
-    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    cat >> /etc/config/reverse-tunnel << EOF
-config tunnel
-    option remote_port '${remote_port}'
-    option local_port '${local_port}'
-    option local_host '${local_host}'
-EOF
-done
+if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
+  # Добавление туннелей в конфиг
+  for remote_port in $tunnel_ports; do
+      local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+      local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+      cat >> /etc/config/reverse-tunnel << EOF
+      config tunnel
+          option remote_port '${remote_port}'
+          option local_port '${local_port}'
+          option local_host '${local_host}'
+      EOF
+  done
+fi
 
 # Установка прав и включение автозапуска
 chmod +x /etc/init.d/reverse-tunnel
