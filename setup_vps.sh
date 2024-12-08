@@ -206,7 +206,7 @@ awk '!seen[$1]++ { line[++count] = $0 } END { for(i=1;i<=count;i++) print line[i
 # Заменяем оригинальный файл очищенным
 mv "$temp_file" /etc/sysctl.conf
 
-# Функция для безопасного добавл��ния параметров
+# Функция для безопасного добавления параметров
 add_sysctl_param() {
     param=$1
     value=$2
@@ -228,16 +228,32 @@ printf "\033[1;32m→ Создание скрипта мониторинга...\
 cat > /root/check_tunnels.sh << 'EOF'
 #!/bin/sh
 
+printf "Проверка статуса туннелей...\n\n"
+
 # Получаем список портов из конфигурации
 PORTS=$(netstat -tlpn | grep ssh | awk '{print $4}' | cut -d: -f2)
 
+if [ -z "$PORTS" ]; then
+    printf "Активных SSH туннелей не обнаружено\n"
+    logger "No active SSH tunnels found"
+    exit 1
+fi
+
+printf "Обнаружены порты: %s\n\n" "$PORTS"
+
 # Проверка активных туннелей
+FOUND=0
 for port in $PORTS; do
     if ! netstat -an | grep "LISTEN" | grep ":$port " > /dev/null; then
-        echo "Туннель на порту $port не активен"
+        printf "\033[31m✗ Туннель на порту %s не активен\033[0m\n" "$port"
         logger "Reverse tunnel on port $port is down"
+    else
+        printf "\033[32m✓ Туннель на порту %s активен\033[0m\n" "$port"
+        FOUND=$((FOUND + 1))
     fi
 done
+
+printf "\nИтого: активно %d из %d туннелей\n" "$FOUND" "$(echo "$PORTS" | wc -w)"
 EOF
 
 chmod +x /root/check_tunnels.sh
@@ -280,7 +296,7 @@ EOF
 
 systemctl restart fail2ban
 
-printf "\n\033[1;34m=== Настройка VPS завершена ===\033[0m\n"
+printf "\n\033[1;34m=== ��астройка VPS завершена ===\033[0m\n"
 printf "\nОткрытые порты:\n"
 case $fw_choice in
     2)
