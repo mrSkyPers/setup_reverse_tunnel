@@ -86,6 +86,71 @@ printf "   - Низкоуровневый контроль\n"
 printf "   - Меньше зависимостей\n"
 
 if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
+    # Проверяем наличие активных правил
+    UFW_RULES=$(ufw status numbered | grep -E "(ALLOW|DENY)" | wc -l)
+    IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "ACCEPT|DROP" | wc -l)
+    
+    if [ $UFW_RULES -gt 0 ] && [ $IPTABLES_RULES -gt 0 ]; then
+        printf "\n\033[1;33m⚠ Внимание: Обнаружены правила в обоих firewall!\033[0m\n"
+        printf "Это может привести к конфликтам и непредсказуемому поведению.\n\n"
+        printf "\033[1mРекомендуемые действия:\033[0m\n"
+        printf "1) Использовать UFW (текущие правила IPTables будут очищены)\n"
+        printf "2) Использовать IPTables (UFW будет отключен)\n"
+        printf "3) Выйти и разобраться с правилами вручную\n\n"
+        read -p "Выберите действие (1/2/3): " clean_choice
+        
+        case $clean_choice in
+            1)
+                # Создаем директорию для бэкапов если её нет
+                backup_dir="/root/firewall_backup"
+                mkdir -p "$backup_dir"
+                
+                # Создаем бэкап с временной меткой
+                timestamp=$(date +%Y%m%d_%H%M%S)
+                
+                printf "\n\033[1;34m→ Создание резервной копии правил IPTables...\033[0m\n"
+                iptables-save > "$backup_dir/iptables_backup_$timestamp.rules"
+                printf "Backup сохранен в: \033[32m%s\033[0m\n" "$backup_dir/iptables_backup_$timestamp.rules"
+                
+                printf "\n\033[1;34m→ Очистка правил IPTables...\033[0m\n"
+                iptables -F
+                iptables -X
+                iptables -P INPUT ACCEPT
+                iptables -P FORWARD ACCEPT
+                iptables -P OUTPUT ACCEPT
+                fw_choice=1
+                ;;
+            2)
+                # Создаем директорию для бэкапов если её нет
+                backup_dir="/root/firewall_backup"
+                mkdir -p "$backup_dir"
+                
+                # Создаем бэкап с временной меткой
+                timestamp=$(date +%Y%m%d_%H%M%S)
+                
+                printf "\n\033[1;34m→ Создание резервной копии правил UFW...\033[0m\n"
+                ufw status numbered > "$backup_dir/ufw_backup_$timestamp.rules"
+                printf "Backup сохранен в: \033[32m%s\033[0m\n" "$backup_dir/ufw_backup_$timestamp.rules"
+                
+                printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
+                ufw disable
+                printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
+                apt remove -y ufw
+                fw_choice=2
+                ;;
+            *)
+                printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
+                printf "Пожалуйста, проверьте и очистите правила firewall вручную:\n"
+                printf "UFW: ufw status numbered\n"
+                printf "IPTables: iptables -L INPUT -n --line-numbers\n"
+                printf "\nДля восстановления правил из backup используйте:\n"
+                printf "IPTables: iptables-restore < /path/to/backup.rules\n"
+                printf "UFW: ufw enable && cat /path/to/backup.rules | while read rule; do ufw \$rule; done\n"
+                exit 1
+                ;;
+        esac
+    fi
+    
     printf "\nВыберите firewall для использования:\n"
     printf "1) UFW (рекомендуется, проще в управлении)\n"
     printf "2) IPTables (классический вариант)\n"
@@ -114,7 +179,7 @@ else
     printf "\nНи один firewall не установлен. Какой установить?\n"
     printf "1) UFW\n"
     printf "2) IPTables\n"
-    read -p "Введите номер (1/2) [1]: " fw_choice
+    read -p "Введ��те номер (1/2) [1]: " fw_choice
     fw_choice=${fw_choice:-1}
     
     case $fw_choice in
@@ -239,7 +304,7 @@ printf "  Мягкий (soft): %s\n" "$CURRENT_SOFT"
 printf "  Жёсткий (hard): %s\n" "$CURRENT_HARD"
 
 printf "\nУвеличение лимитов может помочь при большом количестве соединений.\n"
-printf "Рекомендуется увеличить, если планируется много туннелей.\n"
+printf "Рекомендуется увеличить, если планирует��я много туннелей.\n"
 read -p "Увеличить лимиты до 65535? (1 - да/2 - нет) [1]: " increase_limits
 increase_limits=${increase_limits:-1}
 
@@ -264,7 +329,7 @@ temp_file=$(mktemp)
 # Оставляем только последнее вхождение каждого параметра
 awk '!seen[$1]++ { line[++count] = $0 } END { for(i=1;i<=count;i++) print line[i] }' /etc/sysctl.conf > "$temp_file"
 
-# Заменяем оригинальный файл очищенным
+# Заменяем оригинальный ф��йл очищенным
 mv "$temp_file" /etc/sysctl.conf
 
 # Функция для безопасного добавления параметров
