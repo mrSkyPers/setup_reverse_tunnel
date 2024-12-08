@@ -86,6 +86,7 @@ printf "   - Низкоуровневый контроль\n"
 printf "   - Меньше зависимостей\n"
 
 if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
+    CHOICE_MADE=0
     # Проверяем наличие активных правил
     UFW_RULES=$(ufw status numbered | grep -E "(ALLOW|DENY)" | wc -l)
     IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "ACCEPT|DROP" | wc -l)
@@ -119,7 +120,7 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
                 iptables -P FORWARD ACCEPT
                 iptables -P OUTPUT ACCEPT
                 fw_choice=1
-                return
+                CHOICE_MADE=1
                 ;;
             2)
                 # Создаем директорию для бэкапов если её нет
@@ -138,7 +139,7 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
                 printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
                 apt remove -y ufw
                 fw_choice=2
-                return
+                CHOICE_MADE=1
                 ;;
             *)
                 printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
@@ -153,10 +154,12 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
         esac
     fi
     
-    printf "\nВыберите firewall для использования:\n"
-    printf "1) UFW (рекомендуется, проще в управлении)\n"
-    printf "2) IPTables (классический вариант)\n"
-    read -p "Введите номер (1/2): " fw_choice
+    if [ $CHOICE_MADE -eq 0 ]; then
+        printf "\nВыберите firewall для использования:\n"
+        printf "1) UFW (рекомендуется, проще в управлении)\n"
+        printf "2) IPTables (классический вариант)\n"
+        read -p "Введите номер (1/2): " fw_choice
+    fi
 elif [ $UFW_INSTALLED -eq 1 ]; then
     printf "\nUFW уже установлен. Использовать его? [Y/n]: "
     read -r use_ufw
@@ -181,7 +184,7 @@ else
     printf "\nНи один firewall не установлен. Какой установить?\n"
     printf "1) UFW\n"
     printf "2) IPTables\n"
-    read -p "Введ��те номер (1/2) [1]: " fw_choice
+    read -p "Введите номер (1/2) [1]: " fw_choice
     fw_choice=${fw_choice:-1}
     
     case $fw_choice in
@@ -306,7 +309,7 @@ printf "  Мягкий (soft): %s\n" "$CURRENT_SOFT"
 printf "  Жёсткий (hard): %s\n" "$CURRENT_HARD"
 
 printf "\nУвеличение лимитов может помочь при большом количестве соединений.\n"
-printf "Рекомендуется увеличить, если планирует��я много туннелей.\n"
+printf "Рекомендуется увеличить, если планируется много туннелей.\n"
 read -p "Увеличить лимиты до 65535? (1 - да/2 - нет) [1]: " increase_limits
 increase_limits=${increase_limits:-1}
 
@@ -331,7 +334,7 @@ temp_file=$(mktemp)
 # Оставляем только последнее вхождение каждого параметра
 awk '!seen[$1]++ { line[++count] = $0 } END { for(i=1;i<=count;i++) print line[i] }' /etc/sysctl.conf > "$temp_file"
 
-# Заменяем оригинальный ф��йл очищенным
+# Заменяем оригинальный файл очищенным
 mv "$temp_file" /etc/sysctl.conf
 
 # Функция для безопасного добавления параметров
