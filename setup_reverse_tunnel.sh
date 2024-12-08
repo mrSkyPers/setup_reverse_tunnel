@@ -116,12 +116,15 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\033[1;32m✓ Хост доступен\033[0m\n"
     
     # Проверяем порт SSH
-    if ! nc -z -w5 "$vps_ip" "$ssh_port" >/dev/null 2>&1; then
+    printf "Проверка SSH соединения...\n"
+    if ! timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "exit" >/dev/null 2>&1; then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Работу SSH сервера на VPS\n"
         printf "2. Настройки firewall на VPS\n"
         printf "3. Правильность указанного порта\n"
+        printf "\nПопробуйте выполнить команду вручную:\n"
+        printf "  ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
         exit 1
     fi
     
@@ -186,7 +189,7 @@ else
 fi
 
 if [ "$ssh_choice" = "2" ]; then
-    # Для Dropbear используем cat и ssh дя к��пирования ключа
+    # Для Dropbear используем cat и ssh дя кпирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
     # Сначала пробуем напрямую скопировать ключ
     printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
