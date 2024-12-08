@@ -103,40 +103,24 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
     printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
     
-    # Проверяем доступность порта через telnet
-    printf "Проверка порта через telnet...\n"
-    if ! (echo -e "\x1dclose\x0d" | telnet "$vps_ip" "$ssh_port" 2>&1 | grep -q "Connected"); then
+    # Пробуем прямое подключение SSH
+    printf "Проверка SSH соединения...\n"
+    if ! sshpass -p "$vps_password" ssh -q \
+                                        -o ConnectTimeout=3 \
+                                        -o StrictHostKeyChecking=no \
+                                        -o UserKnownHostsFile=/dev/null \
+                                        -o BatchMode=no \
+                                        -p "$ssh_port" \
+                                        "${vps_user}@${vps_ip}" true >/dev/null 2>&1; then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Правильность IP адреса и порта\n"
         printf "2. Доступность VPS в сети\n"
         printf "3. Работу SSH сервера на VPS\n"
-        exit 1
-    fi
-    printf "\033[1;32m✓ Порт %s на %s доступен\033[0m\n\n" "$ssh_port" "$vps_ip"
-    
-    # Проверяем порт SSH
-    printf "Проверка SSH соединения...\n"
-    
-    # Пробуем подключиться через sshpass с увеличенным таймаутом
-    printf "\nПроверка авторизации через sshpass...\n"
-    if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=5 \
-                                        -o StrictHostKeyChecking=no \
-                                        -o UserKnownHostsFile=/dev/null \
-                                        -p "$ssh_port" \
-                                        "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
-        printf "\n\033[1;31m✗ Ошибка: Не удалось подключиться!\033[0m\n"
-        printf "Проверьте:\n"
-        printf "1. Работу SSH сервера на VPS\n"
-        printf "2. Настройки firewall на VPS\n"
-        printf "3. Правильность указанного порта\n"
         printf "4. Правильность имени пользователя и пароля\n"
-        printf "\nПопробуйте выполнить команду вручную:\n"
-        printf "  sshpass -p ваш_пароль ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
         exit 1
     fi
-    
-    printf "\033[1;32m✓ SSH порт доступен\033[0m\n"
+    printf "\033[1;32m✓ SSH соединение установлено\033[0m\n"
     printf "\033[1;32m✓ VPS полностью доступен\033[0m\n"
 fi
 
@@ -228,7 +212,7 @@ start_service() {
     procd_set_param command \$PROG -NT -i /root/.ssh/id_rsa \\
 EOF
 
-# Добавление всех туннелей в команду
+# Добавление ��сех туннелей в команду
 for remote_port in $tunnel_ports; do
     local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
     local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
