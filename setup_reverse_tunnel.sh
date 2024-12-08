@@ -8,6 +8,11 @@ NC='\033[0m'
 
 printf '\033[34mНастройка обратного SSH-туннеля для OpenWRT\033[0m\n\n'
 
+# Инициализация переменных для туннелей
+tunnel_ports=""
+local_ports=""
+local_hosts=""
+
 # Выбор SSH сервера
 printf '\033[33mВыберите SSH сервер:\033[0m\n'
 echo "1) OpenSSH (рекомендуется)"
@@ -99,11 +104,6 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     read -s -p "Введите пароль пользователя на VPS: " vps_password
     echo ""
 
-    # Массив для хранения туннелей (в sh нет массивов, используем строки)
-    tunnel_ports=""
-    local_ports=""
-    local_hosts=""
-    
     # Запрос количества туннелей
     read -p "Сколько туннелей вы хотите настроить? " tunnel_count
     
