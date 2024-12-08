@@ -103,37 +103,25 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
     printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
     
-    # Пробуем пинговать хост
-    if ! ping -c 1 -W 5 "$vps_ip" >/dev/null 2>&1; then
-        printf "\n\033[1;31m✗ Ошибка: Хост %s недоступен!\033[0m\n" "$vps_ip"
-        printf "Проверьте:\n"
-        printf "1. Правильность IP адреса\n"
-        printf "2. Доступность VPS в сети\n"
-        printf "3. Настройки сетевого подключения\n"
-        exit 1
-    fi
-    
-    printf "\033[1;32m✓ Хост доступен\033[0m\n"
-    
     # Проверяем порт SSH
     printf "Проверка SSH соединения...\n"
-    # Пробуем подключиться без пароля сначала
-    if ! timeout 3 nc -w 3 "$vps_ip" "$ssh_port" </dev/null >/dev/null 2>&1; then
+    # Пробуем подключиться через sshpass с увеличенным таймаутом
+    if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=10 \
+                                        -o ServerAliveInterval=5 \
+                                        -o ServerAliveCountMax=3 \
+                                        -o StrictHostKeyChecking=no \
+                                        -o BatchMode=no \
+                                        -p "$ssh_port" \
+                                        "${vps_user}@${vps_ip}" "echo 'Connection test'" >/dev/null 2>&1; then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Работу SSH сервера на VPS\n"
         printf "2. Настройки firewall на VPS\n"
         printf "3. Правильность указанного порта\n"
+        printf "4. Правильность имени пользователя и пароля\n"
         printf "\nПопробуйте выполнить команду вручную:\n"
-        printf "  ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
+        printf "  sshpass -p ваш_пароль ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
         exit 1
-    fi
-    
-    # Проверяем возможность подключения с паролем
-    printf "Проверка авторизации...\n"
-    if ! printf "%s\n" "$vps_password" | timeout 5 nc -w 5 "$vps_ip" "$ssh_port" >/dev/null 2>&1; then
-        printf "\n\033[1;33m⚠ Предупреждение: Не удалось проверить авторизацию\033[0m\n"
-        printf "Это нормально, если на сервере настроена только авторизация по ключу\n"
     fi
     
     printf "\033[1;32m✓ SSH порт доступен\033[0m\n"
@@ -293,7 +281,7 @@ done
 
 printf '\n\033[33mСозданные файлы и конфигурации:\033[0m\n'
 printf "\n1. Основные конфигурационные файлы:\n"
-printf "   - Конфигу��ация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
+printf "   - Конфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
 printf "   - Скрипт автозапуска: \033[32m/etc/init.d/reverse-tunnel\033[0m\n"
 
 printf "\n2. SSH конфигурация:\n"
@@ -462,6 +450,6 @@ rm /tmp/firewall.reverse-tunnel
 # Добавляем информацию о firewall в вывод
 printf '\n\033[33mНастройки firewall:\033[0m\n'
 printf "Конфигурация firewall: \033[32m/etc/config/firewall\033[0m\n"
-printf "У��равление firewall:\n"
+printf "Управление firewall:\n"
 printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
 printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
