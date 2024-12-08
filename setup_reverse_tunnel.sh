@@ -131,6 +131,13 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
             dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" > /root/.ssh/id_rsa.pub
         fi
     else
+        # Проверяем наличие ssh-keygen
+        if ! command -v ssh-keygen > /dev/null 2>&1; then
+            printf '\n\033[32mУстановка openssh-keygen...\033[0m\n'
+            opkg update
+            opkg install openssh-keygen
+        fi
+        
         # Использование ssh-keygen для OpenSSH
         if [ ! -f /root/.ssh/id_rsa ]; then
             ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
