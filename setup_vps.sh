@@ -408,7 +408,11 @@ EOF
 
 systemctl restart fail2ban
 
-printf "\n\033[1;34m=== Настройка VPS завершена ===\033[0m\n"
+printf "\n\033[1;32m"
+printf "╔════════════════════════════════════════╗\n"
+printf "║         Настройка VPS завершена        ║\n"
+printf "╚════════════════════════════════════════╝\033[0m\n"
+
 printf "\nОткрытые порты:\n"
 case $fw_choice in
     2)
@@ -419,7 +423,7 @@ case $fw_choice in
         ;;
 esac
 
-printf "\n\033[1;33mПроверьте настройки:\033[0m\n"
+printf "\n\033[1;33m▶ Проверьте настройки:\033[0m\n"
 echo "1. SSH конфигурация: /etc/ssh/sshd_config"
 case $fw_choice in
     2)
