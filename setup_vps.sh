@@ -120,11 +120,13 @@ else
 fi
 
 # Установка необходимых пакетов
+printf "\n\033[1;34m=== Установка дополнительных пакетов ===\033[0m\n"
 apt update
 apt install -y fail2ban net-tools
 
 # Настройка SSH
-printf "\nНастройка SSH...\n"
+printf "\n\033[1;34m=== Настройка SSH ===\033[0m\n"
+printf "\033[1;32m→ Обновление конфигурации SSH...\033[0m\n"
 cat >> /etc/ssh/sshd_config << EOF
 GatewayPorts yes
 AllowTcpForwarding yes
@@ -133,14 +135,16 @@ ClientAliveCountMax 3
 EOF
 
 # Перезапуск SSH
+printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
 
 # Настройка файервола
-printf "\nНастройка файервола...\n"
+printf "\n\033[1;34m=== Настройка файервола ===\033[0m\n"
 case $fw_choice in
     2)
         # Настройка IPTables
         # Очистка существующих правил для SSH и туннелей
+        printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
         for port in 22 $TUNNEL_PORTS; do
             iptables -D INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null
         done
@@ -148,11 +152,12 @@ case $fw_choice in
         # Добавление новых правил
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT
         for port in $TUNNEL_PORTS; do
-            printf "Открываем порт %s...\n" "$port"
+            printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
             iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
         done
         
         # Сохранение правил
+        printf "\033[1;32m→ Сохранение правил IPTables...\033[0m\n"
         if [ -x "$(command -v iptables-save)" ]; then
             iptables-save > /etc/iptables/rules.v4
         else
@@ -162,26 +167,30 @@ case $fw_choice in
         ;;
     *)
         # Настройка UFW
+        printf "\033[1;32m→ Настройка правил UFW...\033[0m\n"
         ufw default deny incoming
         ufw default allow outgoing
         ufw allow 22/tcp
         
         for port in $TUNNEL_PORTS; do
-            printf "Открываем порт %s...\n" "$port"
+            printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
             ufw allow "$port/tcp"
         done
         
+        printf "\033[1;32m→ Активация UFW...\033[0m\n"
         yes | ufw enable
         ;;
 esac
 
 # Настройка системных лимитов
-printf "\nНастройка системных лимитов...\n"
+printf "\n\033[1;34m=== Настройка системных лимитов ===\033[0m\n"
+printf "\033[1;32m→ Установка лимитов файловых дескрипторов...\033[0m\n"
 cat >> /etc/security/limits.conf << EOF
 *               soft    nofile          65535
 *               hard    nofile          65535
 EOF
 
+printf "\033[1;32m→ Настройка параметров ядра...\033[0m\n"
 cat >> /etc/sysctl.conf << EOF
 net.ipv4.ip_forward=1
 net.core.somaxconn=65535
@@ -191,12 +200,13 @@ EOF
 sysctl -p
 
 # Создание скрипта мониторинга
-printf "\nСоздание скрипта мониторинга туннелей...\n"
+printf "\n\033[1;34m=== Настройка мониторинга ===\033[0m\n"
+printf "\033[1;32m→ Создание скрипта мониторинга...\033[0m\n"
 cat > /root/check_tunnels.sh << 'EOF'
 #!/bin/sh
 
 # Получаем список портов из конфигурации
-PORTS=$(netstat -tlpn | grep autossh | awk '{print $4}' | cut -d: -f2)
+PORTS=$(netstat -tlpn | grep ssh | awk '{print $4}' | cut -d: -f2)
 
 # Проверка активных туннелей
 for port in $PORTS; do
@@ -210,11 +220,12 @@ EOF
 chmod +x /root/check_tunnels.sh
 
 # Добавление задания в cron
-printf "\nДобавление задания мониторинга в cron...\n"
+printf "\033[1;32m→ Добавление задания в cron...\033[0m\n"
 (crontab -l 2>/dev/null; echo "*/5 * * * * /root/check_tunnels.sh") | crontab -
 
 # Настройка fail2ban
-printf "\nНастройка fail2ban...\n"
+printf "\n\033[1;34m=== Настройка защиты от брутфорса ===\033[0m\n"
+printf "\033[1;32m→ Настройка fail2ban...\033[0m\n"
 cat > /etc/fail2ban/jail.local << EOF
 [sshd]
 enabled = true
@@ -228,14 +239,28 @@ EOF
 
 systemctl restart fail2ban
 
-echo "Настройка VPS завершена"
+printf "\n\033[1;34m=== Настройка VPS завершена ===\033[0m\n"
 printf "\nОткрытые порты:\n"
-ufw status numbered | grep ALLOW
+case $fw_choice in
+    2)
+        iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
+        ;;
+    *)
+        ufw status numbered | grep ALLOW | sed 's/^/  /'
+        ;;
+esac
 
-printf "\nПроверьте настройки:\n"
+printf "\n\033[1;33mПроверьте настройки:\033[0m\n"
 echo "1. SSH конфигурация: /etc/ssh/sshd_config"
-echo "2. Файервол: iptables -L INPUT -n --line-numbers"
-echo "   Сохраненные правила: cat /etc/iptables/rules.v4"
+case $fw_choice in
+    2)
+        echo "2. Файервол: iptables -L INPUT -n --line-numbers"
+        echo "   Сохраненные правила: cat /etc/iptables/rules.v4"
+        ;;
+    *)
+        echo "2. Файервол: ufw status"
+        ;;
+esac
 echo "3. Fail2ban: fail2ban-client status"
 echo "4. Скрипт мониторинга: /root/check_tunnels.sh"
 echo "5. Cron задания: crontab -l" 
