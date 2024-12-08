@@ -321,6 +321,14 @@ EOF
 
 # Проверяем конфигурацию
 printf "\033[1;32m→ Проверка конфигурации SSH...\033[0m\n"
+
+# Создаем необходимые директории
+if [ ! -d "/run/sshd" ]; then
+    printf "\033[1;32m→ Создание директории /run/sshd...\033[0m\n"
+    mkdir -p /run/sshd
+    chmod 0755 /run/sshd
+fi
+
 if ! sshd -t; then
     printf "\033[1;31m✗ Ошибка в конфигурации SSH! Восстанавливаем backup...\033[0m\n"
     mv /etc/ssh/sshd_config.backup /etc/ssh/sshd_config
