@@ -257,7 +257,7 @@ config reverse-tunnel 'general'
     option vps_ip '${vps_ip}'
 EOF
 
-# Добавление тунн��лей в конфиг
+# Добавление туннелей в конфиг
 for remote_port in $tunnel_ports; do
     local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
     local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
@@ -303,7 +303,7 @@ printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n
 printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
 printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
 printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
-printf "Включить ав��озапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
+printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
 printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
 printf "Ручной запуск с отладкой: \033[32mssh -vvv -NT -R ${remote_port}:${local_host}:${local_port} ${vps_user}@${vps_ip} -p ${ssh_port}\033[0m\n"
 
@@ -366,11 +366,11 @@ add_ssh_param "ClientAliveInterval" "30" "/etc/ssh/sshd_config"
 add_ssh_param "ClientAliveCountMax" "3" "/etc/ssh/sshd_config"
 
 # Настройка файервола
-printf '\n\033[32mПроверка настроек файервола...\033[0m\n'
+printf '\n\033[32mПроверка настроек firewall...\033[0m\n'
 
-# Проверяем, установлен ли файервол
+# Проверяем, установлен ли firewall
 if ! command -v fw3 &> /dev/null; then
-    printf '\033[33mФайервол не установлен. Установка...\033[0m\n'
+    printf '\033[33mFirewall не установлен. Установка...\033[0m\n'
     opkg update
     opkg install firewall
 fi
@@ -439,22 +439,22 @@ fi
 
 # Если нужны новые правила, добавляем их
 if [ $NEED_RELOAD -eq 1 ]; then
-    printf '\033[33mДобавление новых правил файервола...\033[0m\n'
+    printf '\033[33mДобавление новых правил firewall...\033[0m\n'
     cat /tmp/firewall.reverse-tunnel >> /etc/config/firewall
     
-    # Перезапускаем файервол
-    printf '\033[32mПерезапуск файервола...\033[0m\n'
+    # Перезапускаем firewall
+    printf '\033[32mПерезапуск firewall...\033[0m\n'
     /etc/init.d/firewall restart
 else
-    printf '\033[32mВсе необходимые правила файервола уже настроены\033[0m\n'
+    printf '\033[32mВсе необходимые правила firewall уже настроены\033[0m\n'
 fi
 
 # Удаляем временный файл
 rm /tmp/firewall.reverse-tunnel
 
-# Добавляем информацию о файерволе в вывод
-printf '\n\033[33mНастройки файервола:\033[0m\n'
-printf "Конфигурация файервола: \033[32m/etc/config/firewall\033[0m\n"
-printf "Управление файерволом:\n"
+# Добавляем информацию о firewall в вывод
+printf '\n\033[33mНастройки firewall:\033[0m\n'
+printf "Конфигурация firewall: \033[32m/etc/config/firewall\033[0m\n"
+printf "Управление firewall:\n"
 printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
 printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
