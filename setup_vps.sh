@@ -98,11 +98,11 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 
 if command -v iptables >/dev/null 2>&1; then
-    IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | wc -l)
+    IPTABLES_RULES=$(iptables -L INPUT -n --line-numbers | grep -E "ACCEPT|DROP" | wc -l)
     IPTABLES_INSTALLED=1
     printf "\n\033[1;32m→ IPTables установлен, найдено правил: %s\033[0m\n" "$IPTABLES_RULES"
     printf "\033[1mТекущие правила IPTables:\033[0m\n"
-    iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
+    iptables -L INPUT -n --line-numbers | sed 's/^/  /'
 fi
 
 printf "\n\033[1;34m=== Выбор firewall ===\033[0m\n"
@@ -546,10 +546,14 @@ printf "╚═══════════════════════
 printf "\nОткрытые порты:\n"
 case $fw_choice in
     2)
-        iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
+        printf "\nПравила IPTables:\n"
+        iptables -L INPUT -n --line-numbers | sed 's/^/  /'
+        printf "\nПолитики по умолчанию:\n"
+        iptables -L -n | grep "Chain" | sed 's/^/  /'
         ;;
     *)
-        ufw status numbered | grep ALLOW | sed 's/^/  /'
+        printf "\nПравила UFW:\n"
+        ufw status numbered | sed 's/^/  /'
         ;;
 esac
 
