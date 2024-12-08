@@ -145,7 +145,7 @@ if [ "$ssh_choice" = "2" ]; then
         dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" > /root/.ssh/id_rsa.pub
     fi
 else
-    # Использование ssh-keygen д��я OpenSSH
+    # Использование ssh-keygen для OpenSSH
     if [ ! -f /root/.ssh/id_rsa ]; then
         ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
     fi
@@ -324,29 +324,20 @@ fi
 # Функция для проверки, является ли IP адрес локальным
 is_local_ip() {
     local ip=$1
-    # Получаем IP адрес и маску LAN интерфейса
-    local lan_ip=$(uci get network.lan.ipaddr)
-    local lan_mask=$(uci get network.lan.netmask)
-    
     # Если это localhost или IP совпадает с LAN IP
-    if [ "$ip" = "localhost" ] || [ "$ip" = "$lan_ip" ]; then
+    if [ "$ip" = "localhost" ]; then
         return 0
     fi
     
-    # Проверяем, находится ли IP в диапазоне локальной сети
-    # Конвертируем IP адреса в числа
-    local IFS=.
-    set -- $ip
-    local ip_num=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
-    set -- $lan_ip
-    local lan_num=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
-    set -- $lan_mask
-    local mask_num=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
-    
-    # Сравниваем сети
-    if [ $(( ip_num & mask_num )) -eq $(( lan_num & mask_num )) ]; then
-        return 0
-    fi
+    # Проверяем, является ли IP адрес локальным (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    case "$ip" in
+        192.168.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
     return 1
 }
 
