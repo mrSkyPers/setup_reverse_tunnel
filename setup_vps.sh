@@ -137,7 +137,7 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
                 printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
                 ufw disable
                 printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
-                apt remove -y ufw
+                apt remove -y ufw >/dev/null 2>&1
                 fw_choice=2
                 CHOICE_MADE=1
                 ;;
@@ -236,13 +236,13 @@ install_package() {
     local package=$1
     if ! dpkg -l | grep -q "^ii  $package "; then
         printf "\033[1;32m→ Установка %s...\033[0m\n" "$package"
-        apt install -y "$package"
+        apt install -y "$package" >/dev/null 2>&1
     else
         printf "\033[1;32m✓ Пакет %s уже установлен\033[0m\n" "$package"
     fi
 }
 
-# Проверка и установка необходимых па��етов
+# Проверка и установка необходимых пакетов
 install_package "fail2ban"
 install_package "net-tools"
 
