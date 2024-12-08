@@ -101,16 +101,32 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
 
     # Проверка доступности VPS
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
-    if ! nc -z -w5 "$vps_ip" "$ssh_port" >/dev/null 2>&1; then
-        printf "\n\033[1;31m✗ Ошибка: Не удалось подключиться к VPS!\033[0m\n"
+    printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
+    
+    # Пробуем пинговать хост
+    if ! ping -c 1 -W 5 "$vps_ip" >/dev/null 2>&1; then
+        printf "\n\033[1;31m✗ Ошибка: Хост %s недоступен!\033[0m\n" "$vps_ip"
         printf "Проверьте:\n"
-        printf "1. Правильность IP адреса и порта\n"
-        printf "2. Доступность VPS сервера\n"
-        printf "3. Работу SSH сервера на VPS\n"
-        printf "4. Настройки firewall на VPS\n"
+        printf "1. Правильность IP адреса\n"
+        printf "2. Доступность VPS в сети\n"
+        printf "3. Настройки сетевого подключения\n"
         exit 1
     fi
-    printf "\033[32m✓ VPS доступен\033[0m\n"
+    
+    printf "\033[1;32m✓ Хост доступен\033[0m\n"
+    
+    # Проверяем порт SSH
+    if ! nc -z -w5 "$vps_ip" "$ssh_port" >/dev/null 2>&1; then
+        printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
+        printf "Проверьте:\n"
+        printf "1. Работу SSH сервера на VPS\n"
+        printf "2. Настройки firewall на VPS\n"
+        printf "3. Правильность указанного порта\n"
+        exit 1
+    fi
+    
+    printf "\033[1;32m✓ SSH порт доступен\033[0m\n"
+    printf "\033[1;32m✓ VPS полностью доступен\033[0m\n"
 fi
 
 # Массив для хранения туннелей (в sh нет массивов, используем строки)
@@ -170,7 +186,7 @@ else
 fi
 
 if [ "$ssh_choice" = "2" ]; then
-    # Для Dropbear используем cat и ssh дя копирования ключа
+    # Для Dropbear используем cat и ssh дя к��пирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
     # Сначала пробуем напрямую скопировать ключ
     printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
