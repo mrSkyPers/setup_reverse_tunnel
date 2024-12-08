@@ -103,13 +103,30 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
     printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
     
+    # Добавляем хост в known_hosts перед проверкой
+    printf "Добавление хоста в known_hosts...\n"
+    if [ "$ssh_choice" = "2" ]; then
+        # Для Dropbear просто создаем пустой файл
+        mkdir -p /root/.ssh
+        touch /root/.ssh/known_hosts
+    else
+        # Для OpenSSH используем ssh-keyscan
+        mkdir -p /root/.ssh
+        # Очищаем старые записи для этого хоста
+        sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
+        # Добавляем все типы ключей хоста
+        for type in rsa ecdsa ed25519; do
+            ssh-keyscan -t $type -p "$ssh_port" "$vps_ip" >> /root/.ssh/known_hosts 2>/dev/null
+        done
+    fi
+    
     # Проверяем порт SSH
     printf "Проверка SSH соединения...\n"
     # Пробуем подключиться через sshpass с увеличенным таймаутом
     if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=10 \
                                         -o ServerAliveInterval=5 \
                                         -o ServerAliveCountMax=3 \
-                                        -o StrictHostKeyChecking=no \
+                                        -o StrictHostKeyChecking=yes \
                                         -o BatchMode=no \
                                         -p "$ssh_port" \
                                         "${vps_user}@${vps_ip}" "echo 'Connection test'" >/dev/null 2>&1; then
