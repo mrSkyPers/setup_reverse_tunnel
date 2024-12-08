@@ -103,15 +103,8 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
     printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
     
-    # Пробуем прямое подключение SSH
-    printf "Проверка SSH соединения...\n"
-    if ! sshpass -p "$vps_password" ssh -q \
-                                        -o ConnectTimeout=3 \
-                                        -o StrictHostKeyChecking=no \
-                                        -o UserKnownHostsFile=/dev/null \
-                                        -o BatchMode=no \
-                                        -p "$ssh_port" \
-                                        "${vps_user}@${vps_ip}" true >/dev/null 2>&1; then
+    # Простая проверка SSH
+    if ! sshpass -p "$vps_password" ssh -p "$ssh_port" -o StrictHostKeyChecking=no "${vps_user}@${vps_ip}" exit 2>/dev/null; then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Правильность IP адреса и порта\n"
@@ -120,8 +113,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
         printf "4. Правильность имени пользователя и пароля\n"
         exit 1
     fi
-    printf "\033[1;32m✓ SSH соединение установлено\033[0m\n"
-    printf "\033[1;32m✓ VPS полностью доступен\033[0m\n"
+    printf "\033[1;32m✓ VPS доступен\033[0m\n"
 fi
 
 # Массив для хранения туннелей (в sh нет массивов, используем строки)
@@ -181,7 +173,7 @@ else
 fi
 
 if [ "$ssh_choice" = "2" ]; then
-    # Для Dropbear используем cat и ssh дя кпирования ключа
+    # Для Dropbear используем cat и ssh дя к��ирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
     # Сначала пробуем напрямую скопировать ключ
     printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
@@ -212,7 +204,7 @@ start_service() {
     procd_set_param command \$PROG -NT -i /root/.ssh/id_rsa \\
 EOF
 
-# Добавление ��сех туннелей в команду
+# Добавление всех туннелей в команду
 for remote_port in $tunnel_ports; do
     local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
     local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
@@ -317,7 +309,7 @@ cleanup_config() {
     local file="$1"
     if [ -f "$file" ]; then
         printf "\033[32m→ Очистка дублирующихся строк в %s...\033[0m\n" "$file"
-        # Создаем временный файл
+        # Создаем временный ф��йл
         temp_file=$(mktemp)
         # Оставляем только последнее вхождение каждой строки, сохраняя порядок
         awk '!seen[$0]++' "$file" > "$temp_file"
