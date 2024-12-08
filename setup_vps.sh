@@ -230,8 +230,21 @@ fi
 
 # Установка необходимых пакетов
 printf "\n\033[1;34m=== Установка дополнительных пакетов ===\033[0m\n"
-apt update
-apt install -y fail2ban net-tools
+
+# Функция для проверки и установки пакета
+install_package() {
+    local package=$1
+    if ! dpkg -l | grep -q "^ii  $package "; then
+        printf "\033[1;32m→ Установка %s...\033[0m\n" "$package"
+        apt install -y "$package"
+    else
+        printf "\033[1;32m✓ Пакет %s уже установлен\033[0m\n" "$package"
+    fi
+}
+
+# Проверка и установка необходимых па��етов
+install_package "fail2ban"
+install_package "net-tools"
 
 # Настройка SSH
 printf "\n\033[1;34m=== Настройка SSH ===\033[0m\n"
@@ -291,38 +304,6 @@ case $fw_choice in
         yes | ufw enable
         ;;
 esac
-
-# Настройка системных лимитов
-printf "\n\033[1;34m=== Настройка системных лимитов ===\033[0m\n"
-printf "\033[1;32m→ Установка лимитов файловых дескрипторов...\033[0m\n"
-cat >> /etc/security/limits.conf << EOF
-*               soft    nofile          65535
-*               hard    nofile          65535
-EOF
-
-# Проверка текущих лимитов
-printf "\n\033[1;34m=== Проверка системных лимитов ===\033[0m\n"
-CURRENT_SOFT=$(ulimit -Sn)
-CURRENT_HARD=$(ulimit -Hn)
-printf "Текущие лимиты файловых дескрипторов:\n"
-printf "  Мягкий (soft): %s\n" "$CURRENT_SOFT"
-printf "  Жёсткий (hard): %s\n" "$CURRENT_HARD"
-
-printf "\nУвеличение лимитов может помочь при большом количестве соединений.\n"
-printf "Рекомендуется увеличить, если планируется много туннелей.\n"
-read -p "Увеличить лимиты до 65535? (1 - да/2 - нет) [1]: " increase_limits
-increase_limits=${increase_limits:-1}
-
-if [ "$increase_limits" = "1" ]; then
-    printf "\n\033[1;32m→ Установка новых лимитов файловых дескрипторов...\033[0m\n"
-    cat >> /etc/security/limits.conf << EOF
-*               soft    nofile          65535
-*               hard    nofile          65535
-EOF
-    printf "\033[1;32m✓ Лимиты установлены. Изменения вступят в силу после перезагрузки.\033[0m\n"
-else
-    printf "\n\033[1;33m→ Лимиты оставлены без изменений.\033[0m\n"
-fi
 
 # Настройка параметров ядра
 printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
