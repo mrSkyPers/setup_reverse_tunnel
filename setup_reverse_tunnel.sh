@@ -48,6 +48,15 @@ else
     printf '\n\033[32msshpass уже установлен\033[0m\n'
 fi
 
+# Установка netcat для проверки доступности
+if ! command -v nc &> /dev/null; then
+    printf '\n\033[32mУстановка netcat...\033[0m\n'
+    opkg update
+    opkg install netcat
+else
+    printf '\n\033[32mnetcat уже установлен\033[0m\n'
+fi
+
 # Запрос данных VPS
 if [ -f /etc/config/reverse-tunnel ]; then
     printf '\n\033[33mОбнаружена существующая конфигурация туннеля.\033[0m\n'
@@ -84,11 +93,24 @@ fi
 
 if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     read -p "Введите IP-адрес VPS сервера: " vps_ip
-    read -p "Введите имя пользователя на VPS: " vps_user
     read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
     ssh_port=${ssh_port:-22}
+    read -p "Введите имя пользователя на VPS: " vps_user
     read -s -p "Введите пароль пользователя на VPS: " vps_password
     echo ""
+
+    # Проверка доступности VPS
+    printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
+    if ! nc -z -w5 "$vps_ip" "$ssh_port" >/dev/null 2>&1; then
+        printf "\n\033[1;31m✗ Ошибка: Не удалось подключиться к VPS!\033[0m\n"
+        printf "Проверьте:\n"
+        printf "1. Правильность IP адреса и порта\n"
+        printf "2. Доступность VPS сервера\n"
+        printf "3. Работу SSH сервера на VPS\n"
+        printf "4. Настройки firewall на VPS\n"
+        exit 1
+    fi
+    printf "\033[32m✓ VPS доступен\033[0m\n"
 fi
 
 # Массив для хранения туннелей (в sh нет массивов, используем строки)
@@ -123,7 +145,7 @@ if [ "$ssh_choice" = "2" ]; then
         dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" > /root/.ssh/id_rsa.pub
     fi
 else
-    # Использование ssh-keygen для OpenSSH
+    # Использование ssh-keygen д��я OpenSSH
     if [ ! -f /root/.ssh/id_rsa ]; then
         ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
     fi
