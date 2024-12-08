@@ -181,7 +181,7 @@ elif [ $IPTABLES_INSTALLED -eq 1 ]; then
         fw_choice=2
     fi
 else
-    printf "\nНи один firewall не установлен. Какой установить?\n"
+    printf "\nНи один firewall не установлен. Ка��ой установить?\n"
     printf "1) UFW\n"
     printf "2) IPTables\n"
     read -p "Введите номер (1/2) [1]: " fw_choice
@@ -242,7 +242,7 @@ install_package() {
     fi
 }
 
-# Проверка и установка необходимых пакетов
+# Проверка и установ��а необходимых пакетов
 install_package "fail2ban"
 install_package "net-tools"
 
@@ -261,7 +261,7 @@ printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
 
 # Настройка firewall
-printf "\n\033[1;34m=== Настройка firewall ===\033[0m\n"
+printf "\n\033[1;34m=== Нас��ройка firewall ===\033[0m\n"
 case $fw_choice in
     2)
         # Настройка IPTables
@@ -371,26 +371,40 @@ EOF
 chmod +x /root/check_tunnels.sh
 
 # Добавление задания в cron
-printf "\033[1;32m→ Добавление задания в cron...\033[0m\n"
+printf "\n\033[1;33m▶ Настройка автоматического мониторинга:\033[0m\n"
+printf "Скрипт мониторинга будет проверять состояние туннелей каждые 5 минут\n"
+printf "и записывать информацию о проблемах в системный лог\n\n"
+read -p "Добавить мониторинг в cron? (1 - да/2 - нет) [1]: " add_to_cron
+add_to_cron=${add_to_cron:-1}
 
-# Создаем временный файл
-temp_cron=$(mktemp)
-
-# Получаем текущие задания и добавляем новое
-(crontab -l 2>/dev/null; echo "*/5 * * * * /root/check_tunnels.sh") | \
-    # Удаляем пустые строки и комментарии
-    grep -v '^#\|^$' | \
-    # Сортируем и оставляем только уникальные строки
-    sort -u > "$temp_cron"
-
-# Устанавливаем обновленный crontab
-crontab "$temp_cron"
-
-# Удаляем временный файл
-rm -f "$temp_cron"
-
-printf "\033[1;32m→ Текущие задания в cron:\033[0m\n"
-crontab -l | grep -v '^#\|^$' | sed 's/^/  /'
+if [ "$add_to_cron" = "1" ]; then
+    printf "\033[1;32m→ Добавление задания в cron...\033[0m\n"
+    
+    # Создаем временный файл
+    temp_cron=$(mktemp)
+    
+    # Получаем текущие задания и добавляем новое
+    (crontab -l 2>/dev/null; echo "*/5 * * * * /root/check_tunnels.sh") | \
+        # Удаляем пустые строки и комментарии
+        grep -v '^#\|^$' | \
+        # Сортируем и оставляем только уникальные строки
+        sort -u > "$temp_cron"
+    
+    # Устанавливаем обновленный crontab
+    crontab "$temp_cron"
+    
+    # Удаляем временный файл
+    rm -f "$temp_cron"
+    
+    printf "\033[1;32m→ Текущие задания в cron:\033[0m\n"
+    crontab -l | grep -v '^#\|^$' | sed 's/^/  /'
+else
+    printf "\n\033[1;33m▶ Для ручного мониторинга используйте команду:\033[0m\n"
+    printf "  /root/check_tunnels.sh\n\n"
+    printf "Для добавления в cron позже:\n"
+    printf "1. Выполните: crontab -e\n"
+    printf "2. Добавьте строку: */5 * * * * /root/check_tunnels.sh\n"
+fi
 
 # Настройка fail2ban
 printf "\n\033[1;34m=== Настройка защиты от брутфорса ===\033[0m\n"
