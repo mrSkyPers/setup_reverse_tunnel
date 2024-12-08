@@ -103,9 +103,9 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
     printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
     
-    # Проверяем доступность порта через netcat
-    printf "Проверка порта через netcat...\n"
-    if ! (echo > /dev/tcp/"$vps_ip"/"$ssh_port") 2>/dev/null; then
+    # Проверяем доступность порта через telnet
+    printf "Проверка порта через telnet...\n"
+    if ! (echo -e "\x1dclose\x0d" | telnet "$vps_ip" "$ssh_port" 2>&1 | grep -q "Connected"); then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Правильность IP адреса и порта\n"
@@ -115,40 +115,16 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     fi
     printf "\033[1;32m✓ Порт %s на %s доступен\033[0m\n\n" "$ssh_port" "$vps_ip"
     
-    # Добавляем хост в known_hosts перед проверкой
-    printf "Добавление хоста в known_hosts...\n"
-    if [ "$ssh_choice" = "2" ]; then
-        # Для Dropbear просто создаем пустой файл
-        mkdir -p /root/.ssh
-        touch /root/.ssh/known_hosts
-    else
-        # Для OpenSSH используем ssh-keyscan
-        mkdir -p /root/.ssh
-        # Очищаем старые записи для этого хоста
-        sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
-        # Добавляем все типы ключей хоста
-        printf "Получение ключей хоста...\n"
-        for type in rsa ecdsa ed25519; do
-            ssh-keyscan -v -t $type -p "$ssh_port" "$vps_ip" >> /root/.ssh/known_hosts 2>&1 || \
-            printf "\033[1;33m⚠ Не удалось получить ключ типа %s\033[0m\n" "$type"
-        done
-    fi
-    printf "\033[1;32m✓ Ключи хоста добавлены\033[0m\n\n"
-    
     # Проверяем порт SSH
     printf "Проверка SSH соединения...\n"
     
-    # Пробуем простое подключение без пароля
-    printf "Тестовое подключение SSH...\n"
-    ssh -v -o ConnectTimeout=5 -o BatchMode=yes -p "$ssh_port" "${vps_user}@${vps_ip}" "exit" 2>&1 || true
-    
     # Пробуем подключиться через sshpass с увеличенным таймаутом
     printf "\nПроверка авторизации через sshpass...\n"
-    if ! sshpass -v -p "$vps_password" ssh -v \
-                                           -o ConnectTimeout=5 \
-                                           -o StrictHostKeyChecking=yes \
-                                           -p "$ssh_port" \
-                                           "${vps_user}@${vps_ip}" "echo OK" 2>&1; then
+    if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=5 \
+                                        -o StrictHostKeyChecking=no \
+                                        -o UserKnownHostsFile=/dev/null \
+                                        -p "$ssh_port" \
+                                        "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         printf "\n\033[1;31m✗ Ошибка: Не удалось подключиться!\033[0m\n"
         printf "Проверьте:\n"
         printf "1. Работу SSH сервера на VPS\n"
