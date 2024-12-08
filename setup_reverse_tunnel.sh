@@ -115,7 +115,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     i=1
     while [ $i -le $tunnel_count ]; do
-        printf '\n\033[33mНа��тройка туннеля %d:\033[0m\n' "$i"
+        printf '\n\033[33mНастройка туннеля %d:\033[0m\n' "$i"
         read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
         read -p "Введите локальный порт для туннеля $i (например 22): " local_port
         read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
@@ -156,21 +156,23 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     # Создаем директорию .ssh если её нет
     mkdir -p /root/.ssh
     
+    # Получаем публичный ключ
+    KEY=$(cat /root/.ssh/id_rsa.pub)
+    
     if [ "$ssh_choice" = "2" ]; then
         # Для Dropbear используем cat и ssh для копирования ключа
-        KEY=$(cat /root/.ssh/id_rsa.pub)
-        printf '%s\n' "$KEY" | sshpass -p "$vps_password" ssh -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
+        printf '%s\n' "$KEY" | sshpass -p "$vps_password" /usr/bin/ssh -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
             printf "\033[1;31m✗ Ошибка при копировании ключа\033[0m\n"
             exit 1
         }
     else
         # Для OpenSSH используем ssh-copy-id
-        printf '%s\n' "$KEY" | sshpass -p "$vps_password" ssh-copy-id -o StrictHostKeyChecking=no -f -p "$ssh_port" "${vps_user}@${vps_ip}"
+        printf '%s\n' "$KEY" | sshpass -p "$vps_password" /usr/bin/ssh -o StrictHostKeyChecking=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
     fi
     
     # Проверяем успешность копирования
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
-    if ! ssh -o StrictHostKeyChecking=no -q -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+    if ! /usr/bin/ssh -o StrictHostKeyChecking=no -q -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
         exit 1
     fi
@@ -249,7 +251,7 @@ chmod +x /etc/init.d/reverse-tunnel
 /etc/init.d/reverse-tunnel start
 
 printf '\n\033[32mНастройка завершена!\033[0m\n'
-printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
+printf "Для подключения к OpenWRT испол��зуйте следующие команды на вашем VPS сервере:\n\n"
 
 for remote_port in $tunnel_ports; do
     local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
@@ -286,7 +288,7 @@ printf "Просмотр настроек:     \033[32muci show reverse-tunnel\0
 printf "Изменение настроек:    \033[32muci set reverse-tunnel.@general[0].vps_ip='новый_ip'\033[0m\n"
 printf "Применение изменений:  \033[32muci commit reverse-tunnel\033[0m\n"
 
-printf '\n\033[33mРезервное копирование:\033[0m\n'
+printf '\n\033[33mРезервн��е копирование:\033[0m\n'
 if [ -f /etc/config/reverse-tunnel.backup ]; then
     printf "Резервная копия предыдущей конфигурации: \033[32m/etc/config/reverse-tunnel.backup\033[0m\n"
 fi
@@ -349,7 +351,7 @@ if ! command -v fw3 &> /dev/null; then
     opkg install firewall
 fi
 
-# Функция для проверки, является ли IP адрес локальным
+# Ф��нкция для проверки, является ли IP адрес локальным
 is_local_ip() {
     local ip=$1
     # Если это localhost или IP совпадает с LAN IP
@@ -429,7 +431,7 @@ rm /tmp/firewall.reverse-tunnel
 # Добавляем информацию о firewall в вывод
 printf '\n\033[33mНастройки firewall:\033[0m\n'
 printf "Конфигурация firewall: \033[32m/etc/config/firewall\033[0m\n"
-printf "Управление firewall:\n"
+printf "Управле��ие firewall:\n"
 printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
 printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
     
