@@ -152,6 +152,14 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Копирование публичного ключа на VPS
     printf '\n\033[32mКопирование публичного ключа на VPS...\033[0m\n'
+    
+    # Определяем путь к SSH
+    if [ "$ssh_choice" = "2" ]; then
+        SSH_BIN="/usr/sbin/dropbear"
+    else
+        SSH_BIN="/usr/bin/ssh"
+    fi
+    
     # Создаем директорию .ssh если её нет
     mkdir -p /root/.ssh
     
@@ -160,23 +168,23 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Автоматически добавляем хост в known_hosts
     printf '\n\033[32mДобавление хоста в доверенные...\033[0m\n'
-    ssh-keyscan -H -p "$ssh_port" "$vps_ip" >> /root/.ssh/known_hosts 2>/dev/null
+    "$SSH_BIN" -o StrictHostKeyChecking=no "${vps_user}@${vps_ip}" -p "$ssh_port" "exit" 2>/dev/null || true
     
     if [ "$ssh_choice" = "2" ]; then
         # Для Dropbear используем cat и ssh для копирования ключа
         KEY=$(cat /root/.ssh/id_rsa.pub)
-        printf '%s\n' "$KEY" | sshpass -p "$vps_password" ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
+        printf '%s\n' "$KEY" | sshpass -p "$vps_password" "$SSH_BIN" -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
             printf "\033[1;31m✗ Ошибка при копировании ключа\033[0m\n"
             exit 1
         }
     else
         # Для OpenSSH используем ssh-copy-id
-        sshpass -p "$vps_password" ssh-copy-id -f -p "$ssh_port" "${vps_user}@${vps_ip}"
+        printf '%s\n' "$KEY" | sshpass -p "$vps_password" "$SSH_BIN" -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
     fi
     
     # Проверяем успешность копирования
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
-    if ! ssh -q -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+    if ! "$SSH_BIN" -q -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
         exit 1
     fi
