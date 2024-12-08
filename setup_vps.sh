@@ -440,22 +440,6 @@ else
     printf "2. Добавьте строку: */5 * * * * /root/check_tunnels.sh\n"
 fi
 
-# Настройка fail2ban
-printf "\n\033[1;34m=== Настройка защиты от брутфорса ===\033[0m\n"
-printf "\033[1;32m→ Настройка fail2ban...\033[0m\n"
-cat > /etc/fail2ban/jail.local << EOF
-[sshd]
-enabled = true
-port = ssh
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 3
-findtime = 300
-bantime = 3600
-EOF
-
-systemctl restart fail2ban
-
 printf "\n\033[1;32m"
 printf "╔════════════════════════════════════════╗\n"
 printf "║         Настройка VPS завершена        ║\n"
@@ -482,6 +466,5 @@ case $fw_choice in
         echo "2. Firewall: ufw status"
         ;;
 esac
-echo "3. Fail2ban: fail2ban-client status"
-echo "4. Скрипт мониторинга: /root/check_tunnels.sh"
-echo "5. Cron задания: crontab -l" 
+echo "3. Скрипт мониторинга: /root/check_tunnels.sh"
+echo "4. Cron задания: crontab -l" 
