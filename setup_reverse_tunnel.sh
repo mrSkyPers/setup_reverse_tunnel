@@ -170,7 +170,7 @@ else
 fi
 
 if [ "$ssh_choice" = "2" ]; then
-    # Для Dropbear используем cat и ssh для копирования ключа
+    # Для Dropbear используем cat и ssh дя копирования ключа
     KEY=$(cat /root/.ssh/id_rsa.pub)
     # Сначала пробуем напрямую скопировать ключ
     printf '%s\n' "$KEY" | ssh -p $ssh_port "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
@@ -301,15 +301,49 @@ fi
 mkdir -p /etc/ssh
 mkdir -p /etc/default
 
-# Проверка и создание конфига для автоматического восстановления соединения
-if [ ! -f /etc/ssh/ssh_config ] || ! grep -q "ServerAliveInterval" /etc/ssh/ssh_config; then
-    cat > /etc/ssh/ssh_config << EOF
-Host *
-    IdentityFile /root/.ssh/id_rsa
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-EOF
-fi
+# Функция для удаления дублирующихся строк в файле
+cleanup_config() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        printf "\033[32m→ Очистка дублирующихся строк в %s...\033[0m\n" "$file"
+        # Создаем временный файл
+        temp_file=$(mktemp)
+        # Оставляем только последнее вхождение каждой строки, сохраняя порядок
+        awk '!seen[$0]++' "$file" > "$temp_file"
+        # Заменяем оригинальный файл очищенным
+        mv "$temp_file" "$file"
+    fi
+}
+
+# Функция для добавления параметра SSH если он отсутствует
+add_ssh_param() {
+    local param="$1"
+    local value="$2"
+    local file="$3"
+    if ! grep -q "^$param" "$file"; then
+        echo "$param $value" >> "$file"
+    fi
+}
+
+# Создаем файл если он не существует
+touch /etc/ssh/ssh_config
+
+# Очищаем конфиги от дублирующихся строк
+cleanup_config "/etc/ssh/ssh_config"
+cleanup_config "/etc/ssh/sshd_config"
+
+# Добавляем параметры без дублирования
+add_ssh_param "Host *" "" "/etc/ssh/ssh_config"
+add_ssh_param "    IdentityFile" "/root/.ssh/id_rsa" "/etc/ssh/ssh_config"
+add_ssh_param "    ServerAliveInterval" "30" "/etc/ssh/ssh_config"
+add_ssh_param "    ServerAliveCountMax" "3" "/etc/ssh/ssh_config"
+
+# Проверяем и добавляем параметры в sshd_config
+touch /etc/ssh/sshd_config
+add_ssh_param "GatewayPorts" "yes" "/etc/ssh/sshd_config"
+add_ssh_param "AllowTcpForwarding" "yes" "/etc/ssh/sshd_config"
+add_ssh_param "ClientAliveInterval" "30" "/etc/ssh/sshd_config"
+add_ssh_param "ClientAliveCountMax" "3" "/etc/ssh/sshd_config"
 
 # Настройка файервола
 printf '\n\033[32mПроверка настроек файервола...\033[0m\n'
