@@ -103,6 +103,18 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     printf "\n\033[32mПроверка доступности VPS...\033[0m\n"
     printf "Попытка подключения к %s:%s...\n" "$vps_ip" "$ssh_port"
     
+    # Проверяем доступность порта через netcat
+    printf "Проверка порта через netcat...\n"
+    if ! nc -zv "$vps_ip" "$ssh_port" 2>&1; then
+        printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
+        printf "Проверьте:\n"
+        printf "1. Правильность IP адреса и порта\n"
+        printf "2. Доступность VPS в сети\n"
+        printf "3. Работу SSH сервера на VPS\n"
+        exit 1
+    fi
+    printf "\033[1;32m✓ Порт доступен\033[0m\n\n"
+    
     # Добавляем хост в known_hosts перед проверкой
     printf "Добавление хоста в known_hosts...\n"
     if [ "$ssh_choice" = "2" ]; then
@@ -115,31 +127,29 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
         # Очищаем старые записи для этого хоста
         sed -i "/$vps_ip/d" /root/.ssh/known_hosts 2>/dev/null
         # Добавляем все типы ключей хоста
+        printf "Получение ключей хоста...\n"
         for type in rsa ecdsa ed25519; do
-            ssh-keyscan -t $type -p "$ssh_port" "$vps_ip" >> /root/.ssh/known_hosts 2>/dev/null
+            ssh-keyscan -v -t $type -p "$ssh_port" "$vps_ip" >> /root/.ssh/known_hosts 2>&1 || \
+            printf "\033[1;33m⚠ Не удалось получить ключ типа %s\033[0m\n" "$type"
         done
     fi
+    printf "\033[1;32m✓ Ключи хоста добавлены\033[0m\n\n"
     
     # Проверяем порт SSH
     printf "Проверка SSH соединения...\n"
     
-    # Временный файл для вывода ошибок
-    error_log=$(mktemp)
+    # Пробуем простое подключение без пароля
+    printf "Тестовое подключение SSH...\n"
+    ssh -v -o ConnectTimeout=5 -o BatchMode=yes -p "$ssh_port" "${vps_user}@${vps_ip}" "exit" 2>&1 || true
     
     # Пробуем подключиться через sshpass с увеличенным таймаутом
-    printf "Выполняется команда: sshpass -p '*****' ssh -v -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o BatchMode=no -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
-    
-    if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=10 \
-                                         -o ServerAliveInterval=5 \
-                                         -o ServerAliveCountMax=3 \
-                                         -o StrictHostKeyChecking=yes \
-                                         -o BatchMode=no \
-                                         -p "$ssh_port" \
-                                         "${vps_user}@${vps_ip}" "echo 'Connection test'" 2>"$error_log"; then
-        printf "\nВывод отладки SSH:\n"
-        cat "$error_log" | sed 's/^/  /'
-        
-        printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
+    printf "\nПроверка авторизации через sshpass...\n"
+    if ! sshpass -v -p "$vps_password" ssh -v \
+                                           -o ConnectTimeout=5 \
+                                           -o StrictHostKeyChecking=yes \
+                                           -p "$ssh_port" \
+                                           "${vps_user}@${vps_ip}" "echo OK" 2>&1; then
+        printf "\n\033[1;31m✗ Ошибка: Не удалось подключиться!\033[0m\n"
         printf "Проверьте:\n"
         printf "1. Работу SSH сервера на VPS\n"
         printf "2. Настройки firewall на VPS\n"
@@ -147,10 +157,8 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
         printf "4. Правильность имени пользователя и пароля\n"
         printf "\nПопробуйте выполнить команду вручную:\n"
         printf "  sshpass -p ваш_пароль ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
-        rm -f "$error_log"
         exit 1
     fi
-    rm -f "$error_log"
     
     printf "\033[1;32m✓ SSH порт доступен\033[0m\n"
     printf "\033[1;32m✓ VPS полностью доступен\033[0m\n"
@@ -309,7 +317,7 @@ done
 
 printf '\n\033[33mСозданные файлы и конфигурации:\033[0m\n'
 printf "\n1. Основные конфигурационные файлы:\n"
-printf "   - Конф��гурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
+printf "   - К��нфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
 printf "   - Скрипт автозапуска: \033[32m/etc/init.d/reverse-tunnel\033[0m\n"
 
 printf "\n2. SSH конфигурация:\n"
