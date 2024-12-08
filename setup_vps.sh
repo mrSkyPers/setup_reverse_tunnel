@@ -119,6 +119,7 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
                 iptables -P FORWARD ACCEPT
                 iptables -P OUTPUT ACCEPT
                 fw_choice=1
+                return
                 ;;
             2)
                 # Создаем директорию для бэкапов если её нет
@@ -137,6 +138,7 @@ if [ $UFW_INSTALLED -eq 1 ] && [ $IPTABLES_INSTALLED -eq 1 ]; then
                 printf "\n\033[1;34m→ Удаление UFW...\033[0m\n"
                 apt remove -y ufw
                 fw_choice=2
+                return
                 ;;
             *)
                 printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
