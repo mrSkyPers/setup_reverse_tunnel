@@ -122,14 +122,23 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Проверяем порт SSH
     printf "Проверка SSH соединения...\n"
+    
+    # Временный файл для вывода ошибок
+    error_log=$(mktemp)
+    
     # Пробуем подключиться через sshpass с увеличенным таймаутом
+    printf "Выполняется команда: sshpass -p '*****' ssh -v -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o BatchMode=no -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
+    
     if ! sshpass -p "$vps_password" ssh -o ConnectTimeout=10 \
-                                        -o ServerAliveInterval=5 \
-                                        -o ServerAliveCountMax=3 \
-                                        -o StrictHostKeyChecking=yes \
-                                        -o BatchMode=no \
-                                        -p "$ssh_port" \
-                                        "${vps_user}@${vps_ip}" "echo 'Connection test'" >/dev/null 2>&1; then
+                                         -o ServerAliveInterval=5 \
+                                         -o ServerAliveCountMax=3 \
+                                         -o StrictHostKeyChecking=yes \
+                                         -o BatchMode=no \
+                                         -p "$ssh_port" \
+                                         "${vps_user}@${vps_ip}" "echo 'Connection test'" 2>"$error_log"; then
+        printf "\nВывод отладки SSH:\n"
+        cat "$error_log" | sed 's/^/  /'
+        
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Работу SSH сервера на VPS\n"
@@ -138,8 +147,10 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
         printf "4. Правильность имени пользователя и пароля\n"
         printf "\nПопробуйте выполнить команду вручную:\n"
         printf "  sshpass -p ваш_пароль ssh -v -p %s %s@%s\n" "$ssh_port" "$vps_user" "$vps_ip"
+        rm -f "$error_log"
         exit 1
     fi
+    rm -f "$error_log"
     
     printf "\033[1;32m✓ SSH порт доступен\033[0m\n"
     printf "\033[1;32m✓ VPS полностью доступен\033[0m\n"
@@ -298,7 +309,7 @@ done
 
 printf '\n\033[33mСозданные файлы и конфигурации:\033[0m\n'
 printf "\n1. Основные конфигурационные файлы:\n"
-printf "   - Конфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
+printf "   - Конф��гурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
 printf "   - Скрипт автозапуска: \033[32m/etc/init.d/reverse-tunnel\033[0m\n"
 
 printf "\n2. SSH конфигурация:\n"
