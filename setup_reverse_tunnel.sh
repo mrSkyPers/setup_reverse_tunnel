@@ -115,7 +115,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     i=1
     while [ $i -le $tunnel_count ]; do
-        printf '\n\033[33mНастройка туннеля %d:\033[0m\n' "$i"
+        printf '\n\033[33mНа��тройка туннеля %d:\033[0m\n' "$i"
         read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
         read -p "Введите локальный порт для туннеля $i (например 22): " local_port
         read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
@@ -153,33 +153,30 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     # Копирование публичного ключа на VPS
     printf '\n\033[32mКопирование публичного ключа на VPS...\033[0m\n'
     
-    # Проверяем разрешение имени
-    if ! ping -c 1 "$vps_ip" >/dev/null 2>&1; then
-        printf "\033[1;31m✗ Ошибка: не удается разрешить IP адрес %s\033[0m\n" "$vps_ip"
-        printf "Проверьте настройки DNS или используйте IP адрес напрямую\n"
-        exit 1
-    fi
-    
     # Создаем директорию .ssh если её нет
     mkdir -p /root/.ssh
     
     # Получаем публичный ключ
     KEY=$(cat /root/.ssh/id_rsa.pub)
     
-    if [ "$ssh_choice" = "2" ]; then
-        # Для Dropbear используем cat и ssh для копирования ключа
-        printf '%s\n' "$KEY" | sshpass -p "$vps_password" ssh "${vps_user}@${vps_ip}:${ssh_port}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh" || {
-            printf "\033[1;31m✗ Ошибка при копировании ключа\033[0m\n"
-            exit 1
-        }
-    else
-        # Для OpenSSH используем простое копирование
-        printf '%s\n' "$KEY" | sshpass -p "$vps_password" ssh "${vps_user}@${vps_ip}:${ssh_port}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-    fi
+    # Создаем временный скрипт для копирования ключа
+    cat > /tmp/copy_key.sh << 'EOF'
+    mkdir -p ~/.ssh
+    cat >> ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+    chmod 700 ~/.ssh
+    EOF
+    
+    # Копируем ключ
+    printf "\033[32m→ Копирование ключа...\033[0m\n"
+    cat /root/.ssh/id_rsa.pub | sshpass -p "$vps_password" ssh -p "$ssh_port" "${vps_user}@${vps_ip}" 'sh -s' < /tmp/copy_key.sh
+    
+    # Удаляем временный скрипт
+    rm -f /tmp/copy_key.sh
     
     # Проверяем успешность копирования
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
-    if ! ssh "${vps_user}@${vps_ip}:${ssh_port}" "echo OK" >/dev/null 2>&1; then
+    if ! ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
         exit 1
     fi
