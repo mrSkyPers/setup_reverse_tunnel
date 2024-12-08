@@ -105,7 +105,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Проверяем доступность порта через netcat
     printf "Проверка порта через netcat...\n"
-    if ! nc -zv "$vps_ip" "$ssh_port" 2>&1; then
+    if ! (echo > /dev/tcp/"$vps_ip"/"$ssh_port") 2>/dev/null; then
         printf "\n\033[1;31m✗ Ошибка: Порт %s недоступен!\033[0m\n" "$ssh_port"
         printf "Проверьте:\n"
         printf "1. Правильность IP адреса и порта\n"
@@ -113,7 +113,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
         printf "3. Работу SSH сервера на VPS\n"
         exit 1
     fi
-    printf "\033[1;32m✓ Порт доступен\033[0m\n\n"
+    printf "\033[1;32m✓ Порт %s на %s доступен\033[0m\n\n" "$ssh_port" "$vps_ip"
     
     # Добавляем хост в known_hosts перед проверкой
     printf "Добавление хоста в known_hosts...\n"
@@ -317,7 +317,7 @@ done
 
 printf '\n\033[33mСозданные файлы и конфигурации:\033[0m\n'
 printf "\n1. Основные конфигурационные файлы:\n"
-printf "   - К��нфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
+printf "   - Конфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
 printf "   - Скрипт автозапуска: \033[32m/etc/init.d/reverse-tunnel\033[0m\n"
 
 printf "\n2. SSH конфигурация:\n"
