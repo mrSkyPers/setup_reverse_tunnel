@@ -137,7 +137,7 @@ ClientAliveCountMax 3
 EOF
 
 # Перезапуск SSH
-printf "\033[1;32m→ П��резапуск SSH сервера...\033[0m\n"
+printf "\033[1;32m→ Перезапуск SSH сервера...\033[0m\n"
 systemctl restart sshd
 
 # Настройка файервола
@@ -196,16 +196,14 @@ EOF
 # Настройка параметров ядра
 printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
 printf "\033[1;32m→ Настройка параметров ядра...\033[0m\n"
-# Записываем параметры в конфигурационный файл
-cat >> /etc/sysctl.conf << EOF
-net.ipv4.ip_forward=1
-net.ipv4.tcp_max_syn_backlog=65535
-EOF
-
+# Добавляем параметры по одному
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+echo "net.ipv4.tcp_max_syn_backlog=65535" >> /etc/sysctl.conf
+  
 # Применяем изменения только для существующих параметров
 sysctl -w net.ipv4.ip_forward=1 2>/dev/null
 sysctl -w net.ipv4.tcp_max_syn_backlog=65535 2>/dev/null
-
+  
 # Перезагружаем все параметры, игнорируя ошибки
 sysctl -p 2>/dev/null || true
 
