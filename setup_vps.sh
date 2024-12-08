@@ -377,16 +377,48 @@ case $fw_choice in
                         iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
                     fi
                 done
+                # Сохраняем правила
+                printf "\033[1;32m→ Сохранение правил...\033[0m\n"
+                mkdir -p /etc/iptables
+                iptables-save > /etc/iptables/rules.v4
                 ;;
             2)
                 cleanup_firewall
-                # ... (существующий код для полной очистки и настройки)
+                # Настройка IPTables
+                printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
+                # Базовые правила
+                iptables -A INPUT -i lo -j ACCEPT
+                iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+                # SSH и туннели
+                iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+                for port in $TUNNEL_PORTS; do
+                    printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
+                    iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
+                done
+                # Политика по умолчанию
+                iptables -P INPUT DROP
+                # Сохраняем правила
+                printf "\033[1;32m→ Сохранение правил...\033[0m\n"
+                mkdir -p /etc/iptables
+                iptables-save > /etc/iptables/rules.v4
                 ;;
             *)
                 printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
                 exit 1
                 ;;
         esac
+        # Настраиваем автоматическое восстановление правил при загрузке
+        printf "\033[1;32m→ Настройка автозагрузки правил...\033[0m\n"
+        if ! grep -q "iptables-restore" /etc/rc.local 2>/dev/null; then
+            # Создаем rc.local если его нет
+            if [ ! -f /etc/rc.local ]; then
+                echo "#!/bin/sh -e" > /etc/rc.local
+                echo "exit 0" >> /etc/rc.local
+                chmod +x /etc/rc.local
+            fi
+            # Добавляем восстановление правил перед exit 0
+            sed -i '/exit 0/i\# Восстановление правил IPTables\niptables-restore < /etc/iptables/rules.v4' /etc/rc.local
+        fi
         ;;
     *)
         # Очищаем все правила перед настройкой
