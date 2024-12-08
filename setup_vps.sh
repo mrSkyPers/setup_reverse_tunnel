@@ -291,46 +291,53 @@ systemctl restart sshd
 printf "\n\033[1;34m=== Настройка firewall ===\033[0m\n"
 case $fw_choice in
     2)
-        # Настройка IPTables
-        # Очистка существующих правил для SSH и туннелей
-        printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
-        for port in 22 $TUNNEL_PORTS; do
-            iptables -D INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null
-        done
+        # Очищаем все правила перед настройкой
+        cleanup_firewall
         
-        # Добавление новых правил
+        # Настройка IPTables
+        printf "\033[1;32m→ Настройка правил IPTables...\033[0m\n"
+        # Базовые правила
+        iptables -A INPUT -i lo -j ACCEPT
+        iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        # SSH и туннели
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT
         for port in $TUNNEL_PORTS; do
             printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
             iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
         done
-        
-        # Сохранение правил
-        printf "\033[1;32m→ Сохранение правил IPTables...\033[0m\n"
-        mkdir -p /etc/iptables
-        if [ -x "$(command -v iptables-save)" ]; then
-            iptables-save > /etc/iptables/rules.v4
-        else
-            apt install -y iptables-persistent
-            iptables-save > /etc/iptables/rules.v4
-        fi
+        # Политика по умолчанию
+        iptables -P INPUT DROP
         ;;
     *)
+        # Очищаем все правила перед настройкой
+        cleanup_firewall
+        
         # Настройка UFW
         printf "\033[1;32m→ Настройка правил UFW...\033[0m\n"
+        ufw --force reset
         ufw default deny incoming
         ufw default allow outgoing
         ufw allow 22/tcp
-        
         for port in $TUNNEL_PORTS; do
             printf "\033[1;32m→ Открываем порт %s...\033[0m\n" "$port"
             ufw allow "$port/tcp"
         done
-        
-        printf "\033[1;32m→ Активация UFW...\033[0m\n"
         yes | ufw enable
         ;;
 esac
+
+# Проверка доступности SSH
+printf "\n\033[1;34m=== Проверка доступности SSH ===\033[0m\n"
+sleep 2  # Даем время на применение правил
+
+if ! nc -zv localhost 22 2>/dev/null; then
+    printf "\033[1;31m✗ SSH недоступен! Откат изменений...\033[0m\n"
+    cleanup_firewall
+    systemctl restart sshd
+    exit 1
+fi
+
+printf "\033[1;32m✓ SSH доступен\033[0m\n"
 
 # Настройка параметров ядра
 printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
@@ -412,7 +419,7 @@ if [ "$add_to_cron" = "y" ] || [ "$add_to_cron" = "Y" ]; then
     
     # Получаем текущие задания и добавляем новое
     (crontab -l 2>/dev/null; echo "*/5 * * * * /root/check_tunnels.sh") | \
-        # У��аляем пустые строки и комментарии
+        # Удаляем пустые строки и комментарии
         grep -v '^#\|^$' | \
         # Сортируем и оставляем только уникальные строки
         sort -u > "$temp_cron"
