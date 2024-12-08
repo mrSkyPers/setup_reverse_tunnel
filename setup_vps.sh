@@ -36,33 +36,6 @@ if command -v iptables >/dev/null 2>&1; then
     iptables -L INPUT -n --line-numbers | grep -E "dpt:(22|$TUNNEL_PORTS)" | sed 's/^/  /'
 fi
 
-# Предупреждение о конфликтах
-if [ $UFW_ACTIVE -eq 1 ] && [ "$fw_choice" = "2" ]; then
-    printf "\n\033[1;33m⚠ Внимание: Обнаружен конфликт!\033[0m\n"
-    printf "\033[33mUFW активен и управляет правилами iptables!\033[0m\n"
-    printf "Использование iptables напрямую может привести к конфликтам.\n\n"
-    printf "\033[1mРекомендуемые действия:\033[0m\n"
-    printf "1. Отключить UFW: sudo ufw disable\n"
-    printf "2. Удалить UFW: sudo apt remove ufw\n"
-    printf "3. Продолжить установку\n\n"
-    
-    printf "\033[1mВыберите действие:\033[0m\n"
-    read -p "Отключить UFW перед продолжением? [Y/n]: " disable_ufw
-    if [ "$disable_ufw" != "n" ] && [ "$disable_ufw" != "N" ]; then
-        printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
-        ufw disable
-        printf "\033[1;34m→ Удаление UFW...\033[0m\n"
-        apt remove -y ufw
-    else
-        printf "\n\033[1;33m⚠ Предупреждение: Продолжение с активным UFW может привести к проблемам!\033[0m\n"
-        read -p "Продолжить? [y/N]: " continue_anyway
-        if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
-            printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
-            exit 1
-        fi
-    fi
-fi
-
 printf "\n\033[1;34m=== Выбор файервола ===\033[0m\n"
 printf "\033[1mДоступные опции:\033[0m\n\n"
 printf "\033[1m1) UFW - современный файервол, простой в управлении\033[0m\n"
@@ -119,6 +92,33 @@ else
     esac
 fi
 
+# Предупреждение о конфликтах
+if [ $UFW_ACTIVE -eq 1 ] && [ "$fw_choice" = "2" ]; then
+    printf "\n\033[1;33m⚠ Внимание: Обнаружен конфликт!\033[0m\n"
+    printf "\033[33mUFW активен и управляет правилами iptables!\033[0m\n"
+    printf "Использование iptables напрямую может привести к конфликтам.\n\n"
+    printf "\033[1mРекомендуемые действия:\033[0m\n"
+    printf "1. Отключить UFW: sudo ufw disable\n"
+    printf "2. Удалить UFW: sudo apt remove ufw\n"
+    printf "3. Продолжить установку\n\n"
+    
+    printf "\033[1mВыберите действие:\033[0m\n"
+    read -p "Отключить UFW перед продолжением? [Y/n]: " disable_ufw
+    if [ "$disable_ufw" != "n" ] && [ "$disable_ufw" != "N" ]; then
+        printf "\n\033[1;34m→ Отключение UFW...\033[0m\n"
+        ufw disable
+        printf "\033[1;34m→ Удаление UFW...\033[0m\n"
+        apt remove -y ufw
+    else
+        printf "\n\033[1;33m⚠ Предупреждение: Продолжение с активным UFW может привести к проблемам!\033[0m\n"
+        read -p "Продолжить? [y/N]: " continue_anyway
+        if [ "$continue_anyway" != "y" ] && [ "$continue_anyway" != "Y" ]; then
+            printf "\n\033[1;31m✗ Установка прервана.\033[0m\n"
+            exit 1
+        fi
+    fi
+fi
+
 # Установка необходимых пакетов
 printf "\n\033[1;34m=== Установка дополнительных пакетов ===\033[0m\n"
 apt update
@@ -158,6 +158,7 @@ case $fw_choice in
         
         # Сохранение правил
         printf "\033[1;32m→ Сохранение правил IPTables...\033[0m\n"
+        mkdir -p /etc/iptables
         if [ -x "$(command -v iptables-save)" ]; then
             iptables-save > /etc/iptables/rules.v4
         else
@@ -190,14 +191,23 @@ cat >> /etc/security/limits.conf << EOF
 *               hard    nofile          65535
 EOF
 
+# Настройка параметров ядра
+printf "\n\033[1;34m=== Настройка параметров ядра ===\033[0m\n"
 printf "\033[1;32m→ Настройка параметров ядра...\033[0m\n"
-cat >> /etc/sysctl.conf << EOF
-net.ipv4.ip_forward=1
-net.core.somaxconn=65535
-net.ipv4.tcp_max_syn_backlog=65535
-EOF
+# Проверяем и устанавливаем только существующие параметры
+{
+    cat >> /etc/sysctl.conf << EOF
+    net.ipv4.ip_forward=1
+    net.ipv4.tcp_max_syn_backlog=65535
+    EOF
+}
 
-sysctl -p
+# Применяем изменения только для существующих параметров
+sysctl -w net.ipv4.ip_forward=1 2>/dev/null
+sysctl -w net.ipv4.tcp_max_syn_backlog=65535 2>/dev/null
+
+# Перезагружаем все параметры, игнорируя ошибки
+sysctl -p 2>/dev/null || true
 
 # Создание скрипта мониторинга
 printf "\n\033[1;34m=== Настройка мониторинга ===\033[0m\n"
