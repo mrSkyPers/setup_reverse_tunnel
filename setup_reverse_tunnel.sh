@@ -123,35 +123,39 @@ copy_ssh_key() {
     printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
     
     if [ "$ssh_type" = "dropbear" ]; then
-        if ! command -v dbclient >/dev/null 2>&1; then
-            print_msg "$RED" "Ошибка: dbclient не установлен"
-            exit 1
-        fi
         # Для Dropbear - копируем ключ и сразу проверяем
-        cat /root/.ssh/id_rsa.pub | dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh && echo OK" >/dev/null 2>&1
+        cat /root/.ssh/id_rsa.pub | dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
         if [ $? -eq 0 ]; then
-            print_msg "$GREEN" "✓ Ключ успешно скопирован и подключение работает"
+            # Проверяем подключение
+            if dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" 2>/dev/null; then
+                print_msg "$GREEN" "✓ Ключ успешно скопирован и подключение работает"
+            else
+                print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+                print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
+                printf "chmod 700 ~/.ssh\n"
+                printf "chmod 600 ~/.ssh/authorized_keys\n"
+                exit 1
+            fi
         else
-            print_msg "$RED" "Ошибка: не удалось настроить подключение по ключу"
-            print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
-            printf "chmod 700 ~/.ssh\n"
-            printf "chmod 600 ~/.ssh/authorized_keys\n"
+            print_msg "$RED" "Ошибка: не удалось скопировать ключ"
             exit 1
         fi
     else
-        if ! command -v ssh >/dev/null 2>&1; then
-            print_msg "$RED" "Ошибка: ssh не установлен"
-            exit 1
-        fi
         # Для OpenSSH - копируем ключ и сразу проверяем
-        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh && echo OK" >/dev/null 2>&1
+        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
         if [ $? -eq 0 ]; then
-            print_msg "$GREEN" "✓ Ключ успешно скопирован и подключение работает"
+            # Проверяем подключение
+            if ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" 2>/dev/null; then
+                print_msg "$GREEN" "✓ Ключ успешно скопирован и подключение работает"
+            else
+                print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+                print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
+                printf "chmod 700 ~/.ssh\n"
+                printf "chmod 600 ~/.ssh/authorized_keys\n"
+                exit 1
+            fi
         else
-            print_msg "$RED" "Ошибка: не удалось настроить подключение по ключу"
-            print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
-            printf "chmod 700 ~/.ssh\n"
-            printf "chmod 600 ~/.ssh/authorized_keys\n"
+            print_msg "$RED" "Ошибка: не удалось скопировать ключ"
             exit 1
         fi
     fi
