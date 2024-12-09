@@ -148,8 +148,13 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     # Создаем директорию .ssh если её нет
     mkdir -p /root/.ssh
     
-    # Копируем ключ напрямую
-    cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    if [ "$ssh_choice" = "2" ]; then
+        # Для Dropbear
+        dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    else
+        # Для OpenSSH
+        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    fi
     
     # Проверяем успешность копирования (добавим -o PasswordAuthentication=no для проверки только по ключу)
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
@@ -271,7 +276,7 @@ chmod +x /etc/init.d/reverse-tunnel
 /etc/init.d/reverse-tunnel start
 
 # Проверка статуса туннеля
-printf '\n\033[32mПроверка статуса туннеля...\033[0m\n'
+printf '\n\033[32mПроверка статуса тун��еля...\033[0m\n'
 sleep 2  # Даем время на установку соединения
 
 # Проверяем процесс SSH
@@ -296,18 +301,28 @@ if ! pgrep -f "ssh.*-NT.*-R" > /dev/null && ! pgrep -f "dbclient.*-NT.*-R" > /de
         exit 1
     fi
 else
-    printf "\033[32m✓ Процесс туннеля запущен\033[0m\n"
+    printf "\033[32m✓ Процесс туннеля ��апущен\033[0m\n"
     # Проверяем прослушивание портов
     for remote_port in $tunnel_ports; do
-        if nc -z localhost "$remote_port" 2>/dev/null; then
-            printf "\033[32m✓ Порт %s прослушивается\033[0m\n" "$remote_port"
+        if [ "$ssh_choice" = "2" ]; then
+            # Для Dropbear проверяем соединение напрямую
+            if nc -z -w1 "$vps_ip" "$remote_port" 2>/dev/null; then
+                printf "\033[32m✓ Порт %s доступен на VPS\033[0m\n" "$remote_port"
+            else
+                printf "\033[1;33m! Порт %s не проверен (требуется проверка на VPS)\033[0m\n" "$remote_port"
+            fi
         else
-            printf "\033[1;31m✗ Порт %s не прослушивается\033[0m\n" "$remote_port"
+            # Для OpenSSH проверяем локально
+            if nc -z localhost "$remote_port" 2>/dev/null; then
+                printf "\033[32m✓ Порт %s прослушивается\033[0m\n" "$remote_port"
+            else
+                printf "\033[1;31m✗ Порт %s не прослушивается\033[0m\n" "$remote_port"
+            fi
         fi
     done
 fi
 
-printf '\n\033[32mНастройка заверше��а!\033[0m\n'
+printf '\n\033[32mНастройка завершена!\033[0m\n'
 printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
 
 for remote_port in $tunnel_ports; do
@@ -427,7 +442,7 @@ is_local_ip() {
     return 1
 }
 
-# Создаем временный файл для новых прав��л
+# Создаем временный файл для новых правл
 cat > /tmp/firewall.reverse-tunnel << EOF
 # Reverse tunnel firewall rules
 config rule
@@ -471,7 +486,7 @@ fi
 
 # Если нужны новые правила, добавляем их
 if [ $NEED_RELOAD -eq 1 ]; then
-    printf '\033[33mДобавление ��овых правил firewall...\033[0m\n'
+    printf '\033[33mДобавление новых правил firewall...\033[0m\n'
     cat /tmp/firewall.reverse-tunnel >> /etc/config/firewall
     if [ $? -ne 0 ]; then
         printf "\033[1;31m✗ Ошибка: не удалось добавить правила firewall\033[0m\n"
