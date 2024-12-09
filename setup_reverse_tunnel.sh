@@ -159,7 +159,7 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     # Получаем публичный ключ
     KEY=$(cat /root/.ssh/id_rsa.pub)
     
-    # Создаем временный скрипт для копирования ключа
+    # Создаем временный скрипт для копирования ключа на VPS
     cat > /tmp/copy_key.sh << 'EOF'
     mkdir -p ~/.ssh
     cat >> ~/.ssh/authorized_keys
