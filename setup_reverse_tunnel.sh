@@ -50,15 +50,6 @@ case $ssh_choice in
         ;;
 esac
 
-# Установка sshpass для автоматического ввода пароля
-if ! command -v sshpass &> /dev/null; then
-    printf '\n\033[32mУстановка sshpass...\033[0m\n'
-    opkg update
-    opkg install sshpass
-else
-    printf '\n\033[32msshpass уже установлен\033[0m\n'
-fi
-
 # Установка netcat для проверки доступности
 if ! command -v nc &> /dev/null; then
     printf '\n\033[32mУстановка netcat...\033[0m\n'
@@ -107,8 +98,6 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
     ssh_port=${ssh_port:-22}
     read -p "Введите имя пользователя на VPS: " vps_user
-    read -s -p "Введите пароль пользователя на VPS: " vps_password
-    echo ""
 
     # Запрос количества туннелей
     read -p "Сколько туннелей вы хотите настроить? " tunnel_count
@@ -152,28 +141,18 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Копирование публичного ключа на VPS
     printf '\n\033[32mКопирование публичного ключа на VPS...\033[0m\n'
+    printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
     
     # Создаем директорию .ssh если её нет
     mkdir -p /root/.ssh
     
-    # Получаем публичный ключ
-    KEY=$(cat /root/.ssh/id_rsa.pub)
-    
-    # Создаем временный скрипт для копирования ключа на VPS
-    cat > /tmp/copy_key.sh << 'EOF'
-    mkdir -p ~/.ssh
-    cat >> ~/.ssh/authorized_keys
-    chmod 600 ~/.ssh/authorized_keys
-    chmod 700 ~/.ssh
-    EOF
-    
-    # Копируем ключ
-    printf "\033[32m→ Копирование ключа...\033[0m\n"
-    cat /root/.ssh/id_rsa.pub | sshpass -p "$vps_password" ssh -p "$ssh_port" "${vps_user}@${vps_ip}" 'sh -s' < /tmp/copy_key.sh
-    
-    # Удаляем временный скрипт
-    rm -f /tmp/copy_key.sh
-    
+    # Копируем ключ напрямую через ssh-copy-id или вручную если его нет
+    if command -v ssh-copy-id > /dev/null 2>&1; then
+        ssh-copy-id -p "$ssh_port" "${vps_user}@${vps_ip}"
+    else
+        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    fi
+
     # Проверяем успешность копирования
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
     if ! ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
