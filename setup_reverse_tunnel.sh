@@ -184,21 +184,18 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
 fi
 
 # Создание скрипта автозапуска
-cat > /etc/init.d/reverse-tunnel << EOF
+cat > /etc/init.d/reverse-tunnel << 'EOF'
 #!/bin/sh /etc/rc.common
 
 START=99
 STOP=15
 USE_PROCD=1
 
-PROG=/usr/bin/ssh
-CONFIGFILE=/etc/config/reverse-tunnel
-
 start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command \$PROG -NT -i /root/.ssh/id_rsa \\
+    procd_set_param command /usr/bin/ssh -NT -i /root/.ssh/id_rsa \
 EOF
 
 # Добавление всех туннелей в команду
@@ -208,7 +205,8 @@ for remote_port in $tunnel_ports; do
     echo "        -R ${remote_port}:${local_host}:${local_port} \\" >> /etc/init.d/reverse-tunnel
 done
 
-cat >> /etc/init.d/reverse-tunnel << EOF
+# Завершаем создание скрипта
+cat >> /etc/init.d/reverse-tunnel << 'EOF'
         ${vps_user}@${vps_ip} -p ${ssh_port}
     
     procd_set_param respawn 3600 5 0
@@ -226,6 +224,11 @@ reload_service() {
     start
 }
 EOF
+
+# Заменяем переменные в скрипте
+sed -i "s|\${vps_user}|$vps_user|g" /etc/init.d/reverse-tunnel
+sed -i "s|\${vps_ip}|$vps_ip|g" /etc/init.d/reverse-tunnel
+sed -i "s|\${ssh_port}|$ssh_port|g" /etc/init.d/reverse-tunnel
 
 if [ $? -ne 0 ]; then
     printf "\033[1;31m✗ Ошибка: не удалось создать скрипт автозапуска\033[0m\n"
