@@ -207,7 +207,6 @@ for remote_port in $tunnel_ports; do
     local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
     echo "        -R ${remote_port}:${local_host}:${local_port} \\" >> /etc/init.d/reverse-tunnel
 done
-done
 
 cat >> /etc/init.d/reverse-tunnel << EOF
         ${vps_user}@${vps_ip} -p ${ssh_port}
@@ -255,7 +254,7 @@ config tunnel
     option local_host '${local_host}'
 EOF
     done
-done
+fi
 
 # Установка прав и включение автозапуска
 chmod +x /etc/init.d/reverse-tunnel
@@ -410,7 +409,6 @@ config rule
 EOF
     fi
 done
-done
 
 # Проверяем существующие правила
 NEED_RELOAD=0
@@ -421,7 +419,6 @@ if [ -f /etc/config/firewall ]; then
             break
         fi
     done
-done
 else
     NEED_RELOAD=1
 fi
