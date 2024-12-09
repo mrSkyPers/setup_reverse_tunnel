@@ -449,4 +449,7 @@ printf "Управление firewall:\n"
 printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
 printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
 
+# Закрываем условный оператор, который был открыт ранее
+fi
+
 exit 0
