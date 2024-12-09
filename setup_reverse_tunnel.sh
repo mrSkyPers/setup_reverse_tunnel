@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Установка Dropbear..."
+            print_msg "$BLUE" "Ус��ановка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -129,33 +129,11 @@ main() {
         fi
     done
 
-    read -p "Введ��те порт для SSH на VPS (по умолчанию 22): " ssh_port
+    read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
     ssh_port=${ssh_port:-22}
     if ! validate_port "$ssh_port"; then
         print_msg "$RED" "Ошибка: некорректный порт"
         exit 1
-    fi
-
-    # Проверяем доступность хоста после получения всех необходимых параметров
-    print_msg "$BLUE" "Проверка доступности хоста..."
-    if ! ping -c 1 -W 2 "$vps_ip" >/dev/null 2>&1; then
-        print_msg "$RED" "Ошибка: хост $vps_ip недоступен"
-        exit 1
-    fi
-
-    # Проверяем SSH порт через netcat, если он установлен
-    if command -v nc >/dev/null 2>&1; then
-        if ! nc -z -w2 "$vps_ip" "$ssh_port" 2>/dev/null; then
-            print_msg "$YELLOW" "Предупреждение: порт $ssh_port может быть закрыт"
-            read -p "Продолжить настройку? (y/N): " continue_setup
-            if [ "$continue_setup" != "y" ] && [ "$continue_setup" != "Y" ]; then
-                exit 1
-            fi
-        else
-            print_msg "$GREEN" "Хост доступен, порт $ssh_port открыт"
-        fi
-    else
-        print_msg "$YELLOW" "Netcat не установлен, пропускаем проверку порта"
     fi
 
     read -p "Введите имя пользователя на VPS: " vps_user
