@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Установка Dropbear..."
+            print_msg "$BLUE" "Ус��ановка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -109,46 +109,35 @@ copy_ssh_key() {
     printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
     
     if [ "$ssh_type" = "dropbear" ]; then
-        # Для Dropbear
-        cat /root/.ssh/id_rsa.pub | dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-        
-        # Проверка подключения для Dropbear
-        sleep 1
-        if ! dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
-            print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+        # Для Dropbear - копируем ключ и сразу проверяем
+        cat /root/.ssh/id_rsa.pub | dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh && echo OK" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            print_msg "$GREEN" "✓ Ключ успешно скопирован и подключение работает"
+        else
+            print_msg "$RED" "Ошибка: не удалось настроить подключение по ключу"
             print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
             printf "chmod 700 ~/.ssh\n"
             printf "chmod 600 ~/.ssh/authorized_keys\n"
             exit 1
         fi
     else
-        # Для OpenSSH
-        cat /root/.ssh/id_rsa.pub | ssh -o StrictHostKeyChecking=no -o BatchMode=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-        
-        # Проверка подключения для OpenSSH
-        sleep 1
-        if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
-            print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+        # Для OpenSSH - копируем ключ и сразу проверяем
+        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh && echo OK" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            print_msg "$GREEN" "✓ Ключ успешно скопирован и подключение работает"
+        else
+            print_msg "$RED" "Ошибка: не удалось настроить подключение по ключу"
             print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
             printf "chmod 700 ~/.ssh\n"
             printf "chmod 600 ~/.ssh/authorized_keys\n"
             exit 1
         fi
     fi
-    
-    print_msg "$GREEN" "✓ Подключение по ключу работает"
 }
 
 # Функция создания init.d скрипта
 create_init_script() {
     local ssh_type="$1"
-    local ssh_opts=""
-    
-    if [ "$ssh_type" = "dropbear" ]; then
-        ssh_opts="-y"  # Автоматически принимать хост-ключи для Dropbear
-    else
-        ssh_opts="-o StrictHostKeyChecking=no"  # Для OpenSSH
-    fi
 
     cat > /etc/init.d/reverse-tunnel << EOF
 #!/bin/sh /etc/rc.common
@@ -164,7 +153,7 @@ start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command ${SSH_CMD} ${ssh_opts} -NT -i /root/.ssh/id_rsa \\
+    procd_set_param command ${SSH_CMD} -NT -i /root/.ssh/id_rsa \\
 EOF
 
     # Добавление всех туннелей в команду
@@ -196,7 +185,7 @@ EOF
     chmod +x /etc/init.d/reverse-tunnel
 }
 
-# Функция создания конфигурационного файла
+# Функция соз��ания конфигурационного файла
 create_config() {
     mkdir -p /etc/config
     cat > /etc/config/reverse-tunnel << EOF
@@ -308,7 +297,7 @@ main() {
     /etc/init.d/reverse-tunnel enable
     /etc/init.d/reverse-tunnel start
 
-    # Проверка статуса туннеля
+    # П��оверка статуса туннеля
     print_msg "$BLUE" "\nПроверка статуса туннеля..."
     sleep 2
 
@@ -336,7 +325,7 @@ main() {
     print_msg "$YELLOW" "\nУправление службой:"
     printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n"
     printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
-    printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
+    printf "Пе��езапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
     printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
     printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
     printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
