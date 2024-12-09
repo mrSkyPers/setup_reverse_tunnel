@@ -57,6 +57,10 @@ setup_ssh() {
             opkg install openssh-server openssh-sftp-server openssh-keygen
             /etc/init.d/sshd enable
             /etc/init.d/sshd start
+        elif ! command -v ssh-keygen >/dev/null 2>&1; then
+            print_msg "$BLUE" "Установка openssh-keygen..."
+            opkg update
+            opkg install openssh-keygen
         fi
         SSH_CMD="/usr/bin/ssh"
     fi
@@ -66,14 +70,24 @@ setup_ssh() {
 generate_ssh_keys() {
     local ssh_type="$1"
     
+    mkdir -p /root/.ssh
     if [ ! -f /root/.ssh/id_rsa ]; then
-        mkdir -p /root/.ssh
         if [ "$ssh_type" = "dropbear" ]; then
+            print_msg "$BLUE" "Генерация ключа Dropbear..."
             dropbearkey -t rsa -f /root/.ssh/id_rsa
             dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" > /root/.ssh/id_rsa.pub
+            chmod 600 /root/.ssh/id_rsa
+            chmod 644 /root/.ssh/id_rsa.pub
         else
+            print_msg "$BLUE" "Генерация ключа OpenSSH..."
+            if ! command -v ssh-keygen >/dev/null 2>&1; then
+                print_msg "$RED" "Ошибка: ssh-keygen не установлен"
+                exit 1
+            fi
             ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
         fi
+    else
+        print_msg "$BLUE" "Используется существующий ключ"
     fi
 }
 
