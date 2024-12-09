@@ -148,20 +148,38 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     # Создаем директорию .ssh если её нет
     mkdir -p /root/.ssh
     
-    # Копируем ключ напрямую через ssh-copy-id или вручную если его нет
-    if command -v ssh-copy-id > /dev/null 2>&1; then
-        ssh-copy-id -p "$ssh_port" "${vps_user}@${vps_ip}"
-    else
-        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-    fi
-
-    # Проверяем успешность копирования
+    # Копируем ключ напрямую
+    cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    
+    # Проверяем успешность копирования (добавим -o PasswordAuthentication=no для проверки только по ключу)
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
-    if ! ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+    if ! ssh -o PasswordAuthentication=no -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
         exit 1
     fi
     printf '\033[32m✓ Подключение по ключу работает\033[0m\n'
+    
+    # Настройка конфигурации SSH
+    printf '\n\033[32mНастройка конфигурации SSH...\033[0m\n'
+    mkdir -p /etc/ssh
+    
+    # Создаем или обновляем ssh_config
+    cat > /etc/ssh/ssh_config << EOF
+Host *
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    StrictHostKeyChecking no
+EOF
+    
+    # Если используется OpenSSH, настраиваем sshd_config
+    if [ "$ssh_choice" != "2" ]; then
+        cat > /etc/ssh/sshd_config << EOF
+AllowTcpForwarding yes
+GatewayPorts yes
+ClientAliveInterval 30
+ClientAliveCountMax 3
+EOF
+    fi
 fi
 
 # Создание скрипта автозапуска
@@ -172,11 +190,14 @@ START=99
 STOP=15
 USE_PROCD=1
 
+. /lib/functions.sh
+. /lib/functions/procd.sh
+
 start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command ${SSH_CMD} -NT -i /root/.ssh/id_rsa \
+    procd_set_param command ${SSH_CMD} -NTi /root/.ssh/id_rsa \
 EOF
 
 # Добавление всех туннелей в команду
@@ -256,9 +277,9 @@ if ! pgrep -f "ssh.*-NT.*-R" > /dev/null && ! pgrep -f "dbclient.*-NT.*-R" > /de
     printf "Проверьте журнал командой: logread | grep ssh\n"
     # Пробуем запустить вручную для отладки
     if [ "$ssh_choice" = "2" ]; then
-        dbclient -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" -v
+        dbclient -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}"
     else
-        ssh -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" -v
+        ssh -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}"
     fi
 else
     printf "\033[32m✓ Процесс туннеля запущен\033[0m\n"
