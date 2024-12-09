@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Ус��ановка Dropbear..."
+            print_msg "$BLUE" "Установка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -108,21 +108,34 @@ copy_ssh_key() {
     print_msg "$BLUE" "\nКопирование публичного ключа на VPS..."
     printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
     
-    # Добавляем опции для автоматического принятия нового хоста
-    cat /root/.ssh/id_rsa.pub | ssh -o StrictHostKeyChecking=no -o BatchMode=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-    
-    # Даем небольшую паузу перед проверкой
-    sleep 1
-    
-    # Проверка подключения по ключу
-    print_msg "$BLUE" "\nПроверка подключения по ключу..."
-    if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
-        print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
-        print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
-        printf "chmod 700 ~/.ssh\n"
-        printf "chmod 600 ~/.ssh/authorized_keys\n"
-        exit 1
+    if [ "$ssh_type" = "dropbear" ]; then
+        # Для Dropbear
+        cat /root/.ssh/id_rsa.pub | dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+        
+        # Проверка подключения для Dropbear
+        sleep 1
+        if ! dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+            print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+            print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
+            printf "chmod 700 ~/.ssh\n"
+            printf "chmod 600 ~/.ssh/authorized_keys\n"
+            exit 1
+        fi
+    else
+        # Для OpenSSH
+        cat /root/.ssh/id_rsa.pub | ssh -o StrictHostKeyChecking=no -o BatchMode=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+        
+        # Проверка подключения для OpenSSH
+        sleep 1
+        if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+            print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+            print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
+            printf "chmod 700 ~/.ssh\n"
+            printf "chmod 600 ~/.ssh/authorized_keys\n"
+            exit 1
+        fi
     fi
+    
     print_msg "$GREEN" "✓ Подключение по ключу работает"
 }
 
