@@ -246,6 +246,32 @@ chmod +x /etc/init.d/reverse-tunnel
 /etc/init.d/reverse-tunnel enable
 /etc/init.d/reverse-tunnel start
 
+# Проверка статуса туннеля
+printf '\n\033[32mПроверка статуса туннеля...\033[0m\n'
+sleep 2  # Даем время на установку соединения
+
+# Проверяем процесс SSH
+if ! pgrep -f "ssh.*-NT.*-R" > /dev/null && ! pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
+    printf "\033[1;31m✗ Ошибка: процесс туннеля не запущен\033[0m\n"
+    printf "Проверьте журнал командой: logread | grep ssh\n"
+    # Пробуем запустить вручную для отладки
+    if [ "$ssh_choice" = "2" ]; then
+        dbclient -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" -v
+    else
+        ssh -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" -v
+    fi
+else
+    printf "\033[32m✓ Процесс туннеля запущен\033[0m\n"
+    # Проверяем прослушивание портов
+    for remote_port in $tunnel_ports; do
+        if nc -z localhost "$remote_port" 2>/dev/null; then
+            printf "\033[32m✓ Порт %s прослушивается\033[0m\n" "$remote_port"
+        else
+            printf "\033[1;31m✗ Порт %s не прослушивается\033[0m\n" "$remote_port"
+        fi
+    done
+fi
+
 printf '\n\033[32mНастройка завершена!\033[0m\n'
 printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
 
@@ -433,8 +459,5 @@ printf "Конфигурация firewall: \033[32m/etc/config/firewall\033[0m\n
 printf "Управление firewall:\n"
 printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
 printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
-
-# Закрываем условный оператор, который был открыт ранее
-fi
 
 exit 0
