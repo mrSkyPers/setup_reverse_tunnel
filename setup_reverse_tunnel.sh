@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Установка Dropbear..."
+            print_msg "$BLUE" "Ус��ановка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -108,12 +108,19 @@ copy_ssh_key() {
     print_msg "$BLUE" "\nКопирование публичного ключа на VPS..."
     printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
     
-    cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    # Добавляем опции для автоматического принятия нового хоста
+    cat /root/.ssh/id_rsa.pub | ssh -o StrictHostKeyChecking=no -o BatchMode=no -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    
+    # Даем небольшую паузу перед проверкой
+    sleep 1
     
     # Проверка подключения по ключу
     print_msg "$BLUE" "\nПроверка подключения по ключу..."
-    if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+    if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+        print_msg "$YELLOW" "Проверьте права на файлы на VPS:"
+        printf "chmod 700 ~/.ssh\n"
+        printf "chmod 600 ~/.ssh/authorized_keys\n"
         exit 1
     fi
     print_msg "$GREEN" "✓ Подключение по ключу работает"
@@ -121,6 +128,15 @@ copy_ssh_key() {
 
 # Функция создания init.d скрипта
 create_init_script() {
+    local ssh_type="$1"
+    local ssh_opts=""
+    
+    if [ "$ssh_type" = "dropbear" ]; then
+        ssh_opts="-y"  # Автоматически принимать хост-ключи для Dropbear
+    else
+        ssh_opts="-o StrictHostKeyChecking=no"  # Для OpenSSH
+    fi
+
     cat > /etc/init.d/reverse-tunnel << EOF
 #!/bin/sh /etc/rc.common
 
@@ -135,7 +151,7 @@ start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command ${SSH_CMD} -NTi /root/.ssh/id_rsa \\
+    procd_set_param command ${SSH_CMD} ${ssh_opts} -NT -i /root/.ssh/id_rsa \\
 EOF
 
     # Добавление всех туннелей в команду
@@ -283,12 +299,22 @@ main() {
     print_msg "$BLUE" "\nПроверка статуса туннеля..."
     sleep 2
 
-    if pgrep -f "ssh.*-NT.*-R" > /dev/null || pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
-        print_msg "$GREEN" "✓ Туннель успешно запущен"
+    if [ "$ssh_type" = "dropbear" ]; then
+        if pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
+            print_msg "$GREEN" "✓ Туннель успешно запущен (Dropbear)"
+        else
+            print_msg "$RED" "✗ Ошибка запуска туннеля"
+            print_msg "$YELLOW" "Проверьте журнал: logread | grep dbclient"
+            exit 1
+        fi
     else
-        print_msg "$RED" "✗ Ошибка запуска туннеля"
-        print_msg "$YELLOW" "Проверьте журнал: logread | grep ssh"
-        exit 1
+        if pgrep -f "ssh.*-NT.*-R" > /dev/null; then
+            print_msg "$GREEN" "✓ Туннель успешно запущен (OpenSSH)"
+        else
+            print_msg "$RED" "✗ Ошибка запуска туннеля"
+            print_msg "$YELLOW" "Проверьте журнал: logread | grep ssh"
+            exit 1
+        fi
     fi
 
     # Вывод информации о настройках
