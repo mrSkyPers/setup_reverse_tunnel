@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Ус��ановка Dropbear..."
+            print_msg "$BLUE" "Установка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -120,6 +120,15 @@ main() {
     setup_ssh "$ssh_type"
 
     # Запрос параметров подключения
+    while true; do
+        read -p "Введите IP-адрес VPS сервера: " vps_ip
+        if validate_ip "$vps_ip"; then
+            break
+        else
+            print_msg "$RED" "Ошибка: некорректный формат IP-адреса"
+        fi
+    done
+
     read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
     ssh_port=${ssh_port:-22}
     if ! validate_port "$ssh_port"; then
@@ -127,18 +136,11 @@ main() {
         exit 1
     fi
 
-    while true; do
-        read -p "Введите IP-адрес VPS сервера: " vps_ip
-        if validate_ip "$vps_ip"; then
-            if nc -z -w2 "$vps_ip" "$ssh_port" 2>/dev/null; then
-                break
-            else
-                print_msg "$RED" "Ошибка: хост $vps_ip недоступен на порту $ssh_port"
-            fi
-        else
-            print_msg "$RED" "Ошибка: некорректный формат IP-адреса"
-        fi
-    done
+    # Проверяем доступность хоста после получения всех необходимых параметров
+    if ! nc -z -w2 "$vps_ip" "$ssh_port" 2>/dev/null; then
+        print_msg "$RED" "Ошибка: хост $vps_ip недоступен на порту $ssh_port"
+        exit 1
+    fi
 
     read -p "Введите имя пользователя на VPS: " vps_user
 
