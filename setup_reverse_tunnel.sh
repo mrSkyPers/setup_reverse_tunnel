@@ -1,218 +1,98 @@
 #!/bin/sh
 
-# Установка цветов для вывода
+# Цвета для вывода
 GREEN='\033[0;32m'
-BLUE='\033[0;34m'
+RED='\033[1;31m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
-printf '\033[34mНастройка обратного SSH-туннеля для OpenWRT\033[0m\n\n'
+# Функция для цветного вывода
+print_msg() {
+    local color="$1"
+    local msg="$2"
+    printf "${color}${msg}${NC}\n"
+}
 
-# Инициализация переменных для туннелей
-tunnel_ports=""
-local_ports=""
-local_hosts=""
+# Функция проверки IP адреса
+validate_ip() {
+    local ip="$1"
+    if echo "$ip" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' >/dev/null; then
+        for octet in $(echo "$ip" | tr '.' ' '); do
+            if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ]; then
+                return 1
+            fi
+        done
+        return 0
+    fi
+    return 1
+}
 
-# Выбор SSH сервера
-printf '\033[33mВыберите SSH сервер:\033[0m\n'
-echo "1) OpenSSH (рекомендуется)"
-echo "2) Dropbear (установлен по умолчанию, меньше нагрузки на сервер)"
-read -p "Введите номер (1/2): " ssh_choice
+# Функция проверки порта
+validate_port() {
+    local port="$1"
+    if echo "$port" | grep -E '^[0-9]+$' >/dev/null && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+        return 0
+    fi
+    return 1
+}
 
-case $ssh_choice in
-    2)
-        SSH_CMD="dbclient"  # Команда для Dropbear
-        if ! command -v dropbear > /dev/null 2>&1; then
-            printf '\n\033[32mУстановка Dropbear...\033[0m\n'
+# Функция настройки SSH
+setup_ssh() {
+    local ssh_type="$1"
+    
+    if [ "$ssh_type" = "dropbear" ]; then
+        if ! command -v dropbear >/dev/null 2>&1; then
+            print_msg "$BLUE" "Установка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
             /etc/init.d/dropbear start
-        else
-            printf '\n\033[32mDropbear уже установлен\033[0m\n'
         fi
-        ;;
-    *)
-        SSH_CMD="/usr/bin/ssh"  # Команда для OpenSSH
-        if ! command -v ssh > /dev/null 2>&1; then
-            printf '\n\033[32mУстановка OpenSSH...\033[0m\n'
+        SSH_CMD="dbclient"
+    else
+        if ! command -v ssh >/dev/null 2>&1; then
+            print_msg "$BLUE" "Установка OpenSSH..."
             opkg update
             opkg install openssh-server openssh-sftp-server openssh-keygen
             /etc/init.d/sshd enable
             /etc/init.d/sshd start
-        else
-            printf '\n\033[32mOpenSSH уже установлен\033[0m\n'
-            # Проверяем наличие ssh-keygen
-            if ! command -v ssh-keygen > /dev/null 2>&1; then
-                printf '\n\033[32mУстановка openssh-keygen...\033[0m\n'
-                opkg update
-                opkg install openssh-keygen
-            fi
         fi
-        ;;
-esac
-
-# Установка netcat для проверки доступности
-if ! command -v nc &> /dev/null; then
-    printf '\n\033[32mУстановка netcat...\033[0m\n'
-    opkg update
-    opkg install netcat
-else
-    printf '\n\033[32mnetcat уже установлен\033[0m\n'
-fi
-
-# Запрос данных VPS
-if [ -f /etc/config/reverse-tunnel ]; then
-    printf '\n\033[33mОбнаружена существующая конфигурация туннеля.\033[0m\n'
-    read -p "Хотите использо��ать существующую конфигурацию? (y/N): " use_existing
-    if [ "$use_existing" = "y" ] || [ "$use_existing" = "Y" ]; then
-        # Проверяем наличие секции general
-        if ! uci show reverse-tunnel.@general[0] >/dev/null 2>&1; then
-            printf '\n\033[33mОшибка: конфигурация повреждена, создаём новую...\033[0m\n'
-            mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.broken
-            use_existing="n"
-        else
-            # Проверяем наличие всех необходимых опций
-            vps_ip=$(uci -q get reverse-tunnel.general.vps_ip)
-            vps_user=$(uci -q get reverse-tunnel.general.vps_user)
-            ssh_port=$(uci -q get reverse-tunnel.general.ssh_port)
-            
-            if [ -z "$vps_ip" ] || [ -z "$vps_user" ] || [ -z "$ssh_port" ]; then
-                printf '\n\033[33mОшибка: не все параметры настроены, создаём новую конфигурацию...\033[0m\n'
-                mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.broken
-                use_existing="n"
-            else
-                echo "Загружена конфигурация:"
-                echo "VPS IP: ${vps_ip}"
-                echo "Пользователь: ${vps_user}"
-                echo "SSH порт: ${ssh_port}"
-            fi
-        fi
-    else
-        printf '\n\033[33mСоздание новой конфигурации...\033[0m\n'
-        mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.backup
-        echo "Предыдущая конфигурация сохранена как /etc/config/reverse-tunnel.backup"
+        SSH_CMD="/usr/bin/ssh"
     fi
-fi
+}
 
-if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
-    # Запрос и проверка IP-адреса
-    while true; do
-        read -p "Введите IP-адрес VPS сервера: " vps_ip
-        # Проверка формата IP-адреса
-        if echo "$vps_ip" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' >/dev/null; then
-            # Проверка каждого октета
-            valid=1
-            for octet in $(echo "$vps_ip" | tr '.' ' '); do
-                if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ]; then
-                    valid=0
-                    break
-                fi
-            done
-            if [ "$valid" = "1" ]; then
-                # Проверка доступности хоста
-                if nc -z -w2 "$vps_ip" "$ssh_port" 2>/dev/null; then
-                    break
-                else
-                    printf "\033[1;31m✗ Ошибка: хост %s недоступен\033[0m\n" "$vps_ip"
-                fi
-            fi
-        fi
-        printf "\033[1;31m✗ Ошибка: некорректный формат IP-адреса\033[0m\n"
-        printf "Формат: xxx.xxx.xxx.xxx (например: 192.168.0.113)\n"
-    done
-
-    read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
-    ssh_port=${ssh_port:-22}
+# Функция генерации SSH ключей
+generate_ssh_keys() {
+    local ssh_type="$1"
     
-    # Проверка порта
-    if ! echo "$ssh_port" | grep -E '^[0-9]+$' >/dev/null || [ "$ssh_port" -lt 1 ] || [ "$ssh_port" -gt 65535 ]; then
-        printf "\033[1;31m✗ Ошибка: некорректный порт SSH\033[0m\n"
-        exit 1
-    fi
-
-    read -p "Введите имя пользователя на VPS: " vps_user
-
-    # Запрос количества туннелей
-    read -p "Сколько туннелей вы хотите настроить? " tunnel_count
-    
-    i=1
-    while [ $i -le $tunnel_count ]; do
-        printf '\n\033[33mНаcтройка туннеля %d:\033[0m\n' "$i"
-        read -p "Введите удаленный порт для туннеля $i (например 19999): " remote_port
-        read -p "Введите локальный порт для туннеля $i (например 22): " local_port
-        read -p "Введите IP-адрес локального устройства (нажмите Enter для localhost): " local_host
-        local_host=${local_host:-localhost}
-        tunnel_ports="$tunnel_ports $remote_port"
-        local_ports="$local_ports $local_port"
-        local_hosts="$local_hosts $local_host"
-        i=$((i + 1))
-    done
-    
-    # Создание SSH-ключей
-    printf '\n\033[32mГенерация SSH-ключей...\033[0m\n'
-    if [ "$ssh_choice" = "2" ]; then
-        # Использование dropbearkey для Dropbear
-        if [ ! -f /root/.ssh/id_rsa ]; then
-            mkdir -p /root/.ssh
+    if [ ! -f /root/.ssh/id_rsa ]; then
+        mkdir -p /root/.ssh
+        if [ "$ssh_type" = "dropbear" ]; then
             dropbearkey -t rsa -f /root/.ssh/id_rsa
-            # Конвертация публичного ключа в формат OpenSSH
             dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" > /root/.ssh/id_rsa.pub
-        fi
-    else
-        # Проверяем наличие ssh-keygen
-        if ! command -v ssh-keygen > /dev/null 2>&1; then
-            printf '\n\033[32mУстановка openssh-keygen...\033[0m\n'
-            opkg update
-            opkg install openssh-keygen
-        fi
-        
-        # Использование ssh-keygen для OpenSSH
-        if [ ! -f /root/.ssh/id_rsa ]; then
+        else
             ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""
         fi
     fi
+}
+
+# Функция настройки SSH конфигурации
+setup_ssh_config() {
+    local ssh_type="$1"
     
-    # Копирование публичного ключа на VPS
-    printf '\n\033[32mКопирование публичного ключа на VPS...\033[0m\n'
-    printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
-    
-    # Создаем директорию .ssh если её нет
-    mkdir -p /root/.ssh
-    
-    if [ "$ssh_choice" = "2" ]; then
-        # Для Dropbear
-        dropbearkey -y -f /root/.ssh/id_rsa | grep "^ssh-rsa" | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-    else
-        # Для OpenSSH
-        cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-    fi
-    
-    # Проверяем успешность копирования (добавим -o PasswordAuthentication=no для проверки только по ключу)
-    printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
-    if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
-        printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
-        printf "Проверьте права на файлы:\n"
-        printf "chmod 700 ~/.ssh\n"
-        printf "chmod 600 ~/.ssh/authorized_keys\n"
-        exit 1
-    fi
-    printf '\033[32m✓ Подключение по ключу работает\033[0m\n'
-    
-    # Настройка конфигурации SSH
-    printf '\n\033[32mНастройка конфигурации SSH...\033[0m\n'
     mkdir -p /etc/ssh
     
-    # Создаем или обновляем ssh_config
+    # Общие настройки SSH клиента
     cat > /etc/ssh/ssh_config << EOF
 Host *
     ServerAliveInterval 30
     ServerAliveCountMax 3
     StrictHostKeyChecking no
 EOF
-    
-    # Если используется OpenSSH, настраиваем sshd_config
-    if [ "$ssh_choice" != "2" ]; then
+
+    # Настройки для OpenSSH сервера
+    if [ "$ssh_type" != "dropbear" ]; then
         cat > /etc/ssh/sshd_config << EOF
 AllowTcpForwarding yes
 GatewayPorts yes
@@ -220,326 +100,90 @@ ClientAliveInterval 30
 ClientAliveCountMax 3
 EOF
     fi
-fi
-
-# Создание скрипта автозапуска
-cat > /etc/init.d/reverse-tunnel << 'EOF'
-#!/bin/sh /etc/rc.common
-
-START=99
-STOP=15
-USE_PROCD=1
-
-. /lib/functions.sh
-. /lib/functions/procd.sh
-
-start_service() {
-    config_load reverse-tunnel
-    
-    procd_open_instance
-    procd_set_param command ${SSH_CMD} -NTi /root/.ssh/id_rsa \
-EOF
-
-# Добавление всех туннелей в команду
-for remote_port in $tunnel_ports; do
-    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    echo "        -R ${remote_port}:${local_host}:${local_port} \\" >> /etc/init.d/reverse-tunnel
-done
-
-# Завершаем создание скрипта
-cat >> /etc/init.d/reverse-tunnel << 'EOF'
-        ${vps_user}@${vps_ip} -p ${ssh_port}
-    
-    procd_set_param respawn 3600 5 0
-    procd_set_param stderr 1
-    procd_set_param stdout 1
-    procd_close_instance
 }
 
-service_triggers() {
-    procd_add_reload_trigger "reverse-tunnel"
-}
+# Основная функция
+main() {
+    print_msg "$BLUE" "Настройка обратного SSH-туннеля для OpenWRT\n"
 
-reload_service() {
-    stop
-    start
-}
-EOF
+    # Выбор SSH сервера
+    print_msg "$YELLOW" "Выберите SSH сервер:"
+    echo "1) OpenSSH (рекомендуется)"
+    echo "2) Dropbear (установлен по умолчанию, меньше нагрузки на сервер)"
+    read -p "Введите номер (1/2): " ssh_choice
 
-# Заменяем переменные в скрипте
-sed -i "s|\${vps_user}|$vps_user|g" /etc/init.d/reverse-tunnel
-sed -i "s|\${vps_ip}|$vps_ip|g" /etc/init.d/reverse-tunnel
-sed -i "s|\${ssh_port}|$ssh_port|g" /etc/init.d/reverse-tunnel
-sed -i "s|\${SSH_CMD}|$SSH_CMD|g" /etc/init.d/reverse-tunnel
+    case "$ssh_choice" in
+        2) ssh_type="dropbear" ;;
+        *) ssh_type="openssh" ;;
+    esac
 
-if [ $? -ne 0 ]; then
-    printf "\033[1;31m✗ Ошибка: не удалось создать скрипт автозапуска\033[0m\n"
-    exit 1
-fi
+    setup_ssh "$ssh_type"
 
-# Создание конфигурационного файла
-mkdir -p /etc/config
-cat > /etc/config/reverse-tunnel << EOF
-config reverse-tunnel 'general'
-    option enabled '1'
-    option ssh_port '${ssh_port}'
-    option vps_user '${vps_user}'
-    option vps_ip '${vps_ip}'
-EOF
-
-if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
-    # Добавление туннелей в конфиг
-    for remote_port in $tunnel_ports; do
-        local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-        local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-        cat >> /etc/config/reverse-tunnel << EOF
-config tunnel
-    option remote_port '${remote_port}'
-    option local_port '${local_port}'
-    option local_host '${local_host}'
-EOF
-    done
-fi
-
-# Установка прав и включение автозапуска
-chmod +x /etc/init.d/reverse-tunnel
-/etc/init.d/reverse-tunnel enable
-/etc/init.d/reverse-tunnel start
-
-# Проверка статуса туннеля
-printf '\n\033[32mПроверка статуса туннеля...\033[0m\n'
-sleep 2  # Даем время на установку соединения
-
-# Проверяем процесс SSH
-if ! pgrep -f "ssh.*-NT.*-R" > /dev/null && ! pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
-    printf "\033[1;31m✗ Ошибка: процесс туннеля не запущен\033[0m\n"
-    printf "Проверьте журнал командой: logread | grep ssh\n"
-    
-    # Пробуем запустить вручную для отладки в фоновом режиме
-    printf "Запуск туннеля вручную...\n"
-    if [ "$ssh_choice" = "2" ]; then
-        dbclient -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" &
-    else
-        ssh -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" &
-    fi
-    
-    # Ждем немного и проверяем статус
-    sleep 2
-    if pgrep -f "ssh.*-NT.*-R" > /dev/null || pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
-        printf "\033[32m✓ Туннель успешно запущен\033[0m\n"
-    else
-        printf "\033[1;31m✗ Не удалось запустить туннель\033[0m\n"
-        exit 1
-    fi
-else
-    printf "\033[32m✓ Проце��с туннеля запущен\033[0m\n"
-    # Проверяем прослушивание портов
-    for remote_port in $tunnel_ports; do
-        if [ "$ssh_choice" = "2" ]; then
-            # Для Dropbear проверяем соединение напрямую
-            if nc -z -w1 "$vps_ip" "$remote_port" 2>/dev/null; then
-                printf "\033[32m✓ Порт %s доступен на VPS\033[0m\n" "$remote_port"
+    # Запрос параметров подключения
+    while true; do
+        read -p "Введите IP-адрес VPS сервера: " vps_ip
+        if validate_ip "$vps_ip"; then
+            if nc -z -w2 "$vps_ip" 22 2>/dev/null; then
+                break
             else
-                printf "\033[1;33m! Порт %s не проверен (требуется проверка на VPS)\033[0m\n" "$remote_port"
+                print_msg "$RED" "Ошибка: хост $vps_ip недоступен"
             fi
         else
-            # Для OpenSSH проверяем локально
-            if nc -z localhost "$remote_port" 2>/dev/null; then
-                printf "\033[32m✓ Порт %s прослушивается\033[0m\n" "$remote_port"
-            else
-                printf "\033[1;31m✗ Порт %s не прослушивается\033[0m\n" "$remote_port"
-            fi
+            print_msg "$RED" "Ошибка: некорректный формат IP-адреса"
         fi
     done
-fi
 
-printf '\n\033[32mНастройка завершена!\033[0m\n'
-printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
-
-for remote_port in $tunnel_ports; do
-    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    printf "Туннель: ssh -p %s root@localhost (-> %s:%s)\n" "$remote_port" "$local_host" "$local_port"
-done
-
-printf '\n\033[33mСозданные файлы и конфигурации:\033[0m\n'
-printf "\n1. Основные конфигурационные файлы:\n"
-printf "   - Конфигурация туннелей: \033[32m/etc/config/reverse-tunnel\033[0m\n"
-printf "   - Скрипт автозапуска: \033[32m/etc/init.d/reverse-tunnel\033[0m\n"
-
-printf "\n2. SSH конфигурация:\n"
-if [ "$ssh_choice" = "2" ]; then
-    printf "   - Конфигурация Dropbear: \033[32m/etc/config/dropbear\033[0m\n"
-else
-    printf "   - Конфигурация OpenSSH: \033[32m/etc/config/sshd\033[0m\n"
-fi
-printf "   - SSH ключи: \033[32m/root/.ssh/id_rsa\033[0m (приватный) и \033[32m/root/.ssh/id_rsa.pub\033[0m (публичный)\n"
-printf "   - Настройки SSH клиента: \033[32m/etc/ssh/ssh_config\033[0m\n"
-
-printf '\n\033[33mУправление службой:\033[0m\n'
-printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n"
-printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
-printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
-printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
-printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
-printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
-printf "Ручной запуск с отладкой: \033[32mssh -vvv -NT -R ${remote_port}:${local_host}:${local_port} ${vps_user}@${vps_ip} -p ${ssh_port}\033[0m\n"
-
-printf '\n\033[33mРедактирование конфигурации через UCI:\033[0m\n'
-printf "Просмотр настроек:     \033[32muci show reverse-tunnel\033[0m\n"
-printf "Изменение настроек:    \033[32muci set reverse-tunnel.@general[0].vps_ip='новый_ip'\033[0m\n"
-printf "Применение изменений:  \033[32muci commit reverse-tunnel\033[0m\n"
-
-printf '\n\033[33mРезервное копирование:\033[0m\n'
-if [ -f /etc/config/reverse-tunnel.backup ]; then
-    printf "Резервная копия предыдущей конфигурации: \033[32m/etc/config/reverse-tunnel.backup\033[0m\n"
-fi
-
-# Проверка существования директорий и файлов конфигурации
-mkdir -p /etc/ssh
-mkdir -p /etc/default
-
-# Функция для удаления дублирующихся строк в файле
-cleanup_config() {
-    local file="$1"
-    if [ -f "$file" ]; then
-        printf "\033[32m→ Очистка дублирующихся строк в %s...\033[0m\n" "$file"
-        # Создаем временный файл
-        temp_file=$(mktemp)
-        # Оставляем только последнее вхождение каждой строки, сохраняя порядок
-        awk '!seen[$0]++' "$file" > "$temp_file"
-        # Заменяем оригинальный файл очищенным
-        mv "$temp_file" "$file"
-    fi
-}
-
-# Функция для добавления параметра SSH если он отсутствует
-add_ssh_param() {
-    local param="$1"
-    local value="$2"
-    local file="$3"
-    if ! grep -q "^$param" "$file"; then
-        echo "$param $value" >> "$file"
-    fi
-}
-
-# Создаем файл если он не существует
-touch /etc/ssh/ssh_config
-
-# Очищаем конфиги от дублирующихся строк
-cleanup_config "/etc/ssh/ssh_config"
-cleanup_config "/etc/ssh/sshd_config"
-
-# Добавляем параметры без дублирования
-add_ssh_param "Host *" "" "/etc/ssh/ssh_config"
-add_ssh_param "    IdentityFile" "/root/.ssh/id_rsa" "/etc/ssh/ssh_config"
-add_ssh_param "    ServerAliveInterval" "30" "/etc/ssh/ssh_config"
-add_ssh_param "    ServerAliveCountMax" "3" "/etc/ssh/ssh_config"
-
-# Проверяем и добавляем параметры в sshd_config
-touch /etc/ssh/sshd_config
-add_ssh_param "GatewayPorts" "yes" "/etc/ssh/sshd_config"
-add_ssh_param "AllowTcpForwarding" "yes" "/etc/ssh/sshd_config"
-add_ssh_param "ClientAliveInterval" "30" "/etc/ssh/sshd_config"
-add_ssh_param "ClientAliveCountMax" "3" "/etc/ssh/sshd_config"
-
-# Настройка файервола
-printf '\n\033[32mПроверка настроек firewall...\033[0m\n'
-
-# Проверяем, установлен ли firewall
-if ! command -v fw3 &> /dev/null; then
-    printf '\033[33mFirewall не установлен. Установка...\033[0m\n'
-    opkg update
-    opkg install firewall
-fi
-
-# Функция для проверки, является ли IP адрес локальным
-is_local_ip() {
-    local ip=$1
-    # Если это localhost или IP совпадает с LAN IP
-    if [ "$ip" = "localhost" ]; then
-        return 0
-    fi
-    
-    # Проверяем, является ли IP адрес локальным (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-    case "$ip" in
-        192.168.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-    return 1
-}
-
-# Создаем временный файл для новых правл
-cat > /tmp/firewall.reverse-tunnel << EOF
-# Reverse tunnel firewall rules
-config rule
-    option name 'Allow-SSH-In'
-    option target 'ACCEPT'
-    option src 'wan'
-    option proto 'tcp'
-    option dest_port '22'
-
-EOF
-
-# Добавляем правила для каждого туннеля
-for remote_port in $tunnel_ports; do
-    local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-    if is_local_ip "$local_host"; then
-        cat >> /tmp/firewall.reverse-tunnel << EOF
-config rule
-    option name 'Allow-Tunnel-${remote_port}'
-    option target 'ACCEPT'
-    option src 'wan'
-    option proto 'tcp'
-    option dest_port '${local_port}'
-
-EOF
-    fi
-done
-
-# Проверяем существующие правила
-NEED_RELOAD=0
-if [ -f /etc/config/firewall ]; then
-    for remote_port in $tunnel_ports; do
-        if ! grep -q "Allow-Tunnel-${remote_port}" /etc/config/firewall; then
-            NEED_RELOAD=1
-            break
-        fi
-    done
-else
-    NEED_RELOAD=1
-fi
-
-# Если нужны новые правила, добавляем их
-if [ $NEED_RELOAD -eq 1 ]; then
-    printf '\033[33mДобавление новых правил firewall...\033[0m\n'
-    cat /tmp/firewall.reverse-tunnel >> /etc/config/firewall
-    if [ $? -ne 0 ]; then
-        printf "\033[1;31m✗ Ошибка: не удалось добавить правила firewall\033[0m\n"
+    read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
+    ssh_port=${ssh_port:-22}
+    if ! validate_port "$ssh_port"; then
+        print_msg "$RED" "Ошибка: некорректный порт"
         exit 1
     fi
-    
-    # Перезапускаем firewall
-    printf '\033[32mПерезапуск firewall...\033[0m\n'
-    /etc/init.d/firewall restart
-else
-    printf '\033[32mВсе необходимые правила firewall уже настроены\033[0m\n'
-fi
 
-# Удаляем временный файл
-rm /tmp/firewall.reverse-tunnel
+    read -p "Введите имя пользователя на VPS: " vps_user
 
-# Добавляем информацию о firewall в вывод
-printf '\n\033[33mНастройки firewall:\033[0m\n'
-printf "Конфигурация firewall: \033[32m/etc/config/firewall\033[0m\n"
-printf "Управление firewall:\n"
-printf "Перезапуск:  \033[32m/etc/init.d/firewall restart\033[0m\n"
-printf "Статус:      \033[32m/etc/init.d/firewall status\033[0m\n"
+    # Настройка туннелей
+    read -p "Сколько туннелей вы хотите настроить? " tunnel_count
+    tunnel_ports=""
+    local_ports=""
+    local_hosts=""
 
-exit 0
+    i=1
+    while [ $i -le $tunnel_count ]; do
+        print_msg "$YELLOW" "\nНастройка туннеля $i:"
+        
+        while true; do
+            read -p "Введите удаленный порт для туннеля $i: " remote_port
+            if validate_port "$remote_port"; then
+                break
+            else
+                print_msg "$RED" "Ошибка: некорректный порт"
+            fi
+        done
+
+        while true; do
+            read -p "Введите локальный порт для туннеля $i: " local_port
+            if validate_port "$local_port"; then
+                break
+            else
+                print_msg "$RED" "Ошибка: некорректный порт"
+            fi
+        done
+
+        read -p "Введите IP-адрес локального устройства (Enter для localhost): " local_host
+        local_host=${local_host:-localhost}
+
+        tunnel_ports="$tunnel_ports $remote_port"
+        local_ports="$local_ports $local_port"
+        local_hosts="$local_hosts $local_host"
+        i=$((i + 1))
+    done
+
+    # Генерация и установка SSH ключей
+    generate_ssh_keys "$ssh_type"
+    setup_ssh_config "$ssh_type"
+
+    # Продолжение в следующем сообщении...
+}
+
+main "$@"
