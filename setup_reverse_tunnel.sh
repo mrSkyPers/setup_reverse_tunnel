@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Ус��ановка Dropbear..."
+            print_msg "$BLUE" "Установка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -185,7 +185,7 @@ EOF
     chmod +x /etc/init.d/reverse-tunnel
 }
 
-# Функция соз��ания конфигурационного файла
+# Функция создания конфигурационного файла
 create_config() {
     mkdir -p /etc/config
     cat > /etc/config/reverse-tunnel << EOF
@@ -209,71 +209,146 @@ EOF
     done
 }
 
+# Добавим новые функции для улучшения интерактивности
+
+# Функция для отображения заголовка
+show_header() {
+    clear
+    printf "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}\n"
+    printf "${BLUE}║            Настройка обратного SSH-туннеля                ║${NC}\n"
+    printf "${BLUE}║                      для OpenWRT                          ║${NC}\n"
+    printf "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}\n\n"
+}
+
+# Функция для отображения меню выбора
+show_menu() {
+    local title="$1"
+    shift
+    local options=("$@")
+    local i=1
+    
+    printf "${YELLOW}${title}${NC}\n"
+    printf "╔════════════════════════════════════════════════════════════╗\n"
+    for opt in "${options[@]}"; do
+        printf "║ ${GREEN}%d)${NC} %-54s ║\n" "$i" "$opt"
+        i=$((i + 1))
+    done
+    printf "╚════════════════════════════════════════════════════════════╝\n"
+}
+
+# Функция для отображения прогресса настройки
+show_progress() {
+    local step="$1"
+    local total="$2"
+    local description="$3"
+    
+    printf "${BLUE}[%d/%d]${NC} %s\n" "$step" "$total" "$description"
+}
+
+# Функция для запроса данных с подсказкой
+get_input() {
+    local prompt="$1"
+    local default="$2"
+    local hint="$3"
+    
+    if [ -n "$hint" ]; then
+        printf "${YELLOW}ℹ ${hint}${NC}\n"
+    fi
+    
+    if [ -n "$default" ]; then
+        printf "${prompt} [${GREEN}%s${NC}]: " "$default"
+    else
+        printf "${prompt}: "
+    fi
+}
+
 # Основная функция
 main() {
-    print_msg "$BLUE" "Настройка обратного SSH-туннеля для OpenWRT\n"
+    show_header
 
     # Выбор SSH сервера
-    print_msg "$YELLOW" "Выберите SSH сервер:"
-    echo "1) OpenSSH (рекомендуется)"
-    echo "2) Dropbear (установлен по умолчанию, меньше нагрузки на сервер)"
+    show_menu "Выберите SSH сервер:" \
+        "OpenSSH (рекомендуется для максимальной совместимости)" \
+        "Dropbear (легковесное решение, меньше нагрузки на систему)"
+    
     read -p "Введите номер (1/2): " ssh_choice
+    echo
 
     case "$ssh_choice" in
-        2) ssh_type="dropbear" ;;
-        *) ssh_type="openssh" ;;
+        2) 
+            ssh_type="dropbear"
+            print_msg "$BLUE" "→ Выбран Dropbear"
+            ;;
+        *) 
+            ssh_type="openssh"
+            print_msg "$BLUE" "→ Выбран OpenSSH"
+            ;;
     esac
 
     setup_ssh "$ssh_type"
 
     # Запрос параметров подключения
+    printf "\n${YELLOW}═══ Настройка подключения к VPS ═══${NC}\n"
+    
     while true; do
-        read -p "Введите IP-адрес VPS сервера: " vps_ip
+        get_input "Введите IP-адрес VPS сервера" "" "Пример: 192.168.0.100"
+        read vps_ip
         if validate_ip "$vps_ip"; then
+            print_msg "$GREEN" "✓ IP-адрес корректен"
             break
         else
-            print_msg "$RED" "Ошибка: некорректный формат IP-адреса"
+            print_msg "$RED" "✗ Некорректный формат IP-адреса"
         fi
     done
 
-    read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
+    get_input "Введите порт для SSH на VPS" "22" "Стандартный порт SSH: 22"
+    read ssh_port
     ssh_port=${ssh_port:-22}
     if ! validate_port "$ssh_port"; then
-        print_msg "$RED" "Ошибка: некорректный порт"
+        print_msg "$RED" "✗ Ошибка: некорректный порт"
         exit 1
     fi
 
-    read -p "Введите имя пользователя на VPS: " vps_user
+    get_input "Введите имя пользователя на VPS" "root" "Пользователь должен иметь права на создание туннелей"
+    read vps_user
+    vps_user=${vps_user:-root}
 
     # Настройка туннелей
-    read -p "Сколько туннелей вы хотите настроить? " tunnel_count
+    printf "\n${YELLOW}═══ Настройка туннелей ═══${NC}\n"
+    get_input "Сколько туннелей вы хотите настроить" "1" "Можно настроить несколько туннелей для разных сервисов"
+    read tunnel_count
+    tunnel_count=${tunnel_count:-1}
+
     tunnel_ports=""
     local_ports=""
     local_hosts=""
 
     i=1
     while [ $i -le $tunnel_count ]; do
-        print_msg "$YELLOW" "\nНастройка туннеля $i:"
+        printf "\n${BLUE}╔═══ Настройка туннеля %d ═══╗${NC}\n" "$i"
         
         while true; do
-            read -p "Введите удаленный порт для туннеля $i: " remote_port
+            get_input "Введите удаленный порт" "" "Порт на VPS сервере (1-65535)"
+            read remote_port
             if validate_port "$remote_port"; then
                 break
             else
-                print_msg "$RED" "Ошибка: некорректный порт"
+                print_msg "$RED" "✗ Некорректный порт"
             fi
         done
 
         while true; do
-            read -p "Введите локальный порт для туннеля $i: " local_port
+            get_input "Введите локальный порт" "" "Порт на локальном устройстве (1-65535)"
+            read local_port
             if validate_port "$local_port"; then
                 break
             else
-                print_msg "$RED" "Ошибка: некорректный порт"
+                print_msg "$RED" "✗ Некорректный порт"
             fi
         done
 
-        read -p "Введите IP-адрес локального устройства (Enter для localhost): " local_host
+        get_input "Введите IP-адрес локального устройства" "localhost" "Оставьте пустым для localhost"
+        read local_host
         local_host=${local_host:-localhost}
 
         tunnel_ports="$tunnel_ports $remote_port"
@@ -282,22 +357,23 @@ main() {
         i=$((i + 1))
     done
 
-    # Генерация и установка SSH ключей
+    # Остальные функции с прогрессом настройки
+    show_progress 1 4 "Генерация SSH ключей"
     generate_ssh_keys "$ssh_type"
     setup_ssh_config "$ssh_type"
 
-    # Копирование ключа на VPS
+    show_progress 2 4 "Копирование ключа на VPS"
     copy_ssh_key "$ssh_type"
 
-    # Создание конфигурации и скрипта автозапуска
+    show_progress 3 4 "Создание конфигурации"
     create_config
     create_init_script
 
-    # Запуск сервиса
+    show_progress 4 4 "Запуск сервиса"
     /etc/init.d/reverse-tunnel enable
     /etc/init.d/reverse-tunnel start
 
-    # П��оверка статуса туннеля
+    # Проверка статуса туннеля
     print_msg "$BLUE" "\nПроверка статуса туннеля..."
     sleep 2
 
@@ -325,7 +401,7 @@ main() {
     print_msg "$YELLOW" "\nУправление службой:"
     printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n"
     printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
-    printf "Пе��езапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
+    printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
     printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
     printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
     printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
