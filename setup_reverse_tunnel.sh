@@ -153,8 +153,11 @@ if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
     
     # Проверяем успешность копирования (добавим -o PasswordAuthentication=no для проверки только по ключу)
     printf '\n\033[32mПроверка подключения по ключу...\033[0m\n'
-    if ! ssh -o PasswordAuthentication=no -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+    if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
         printf "\033[1;31m✗ Ошибка: не удалось подключиться по ключу\033[0m\n"
+        printf "Проверьте права на файлы:\n"
+        printf "chmod 700 ~/.ssh\n"
+        printf "chmod 600 ~/.ssh/authorized_keys\n"
         exit 1
     fi
     printf '\033[32m✓ Подключение по ключу работает\033[0m\n'
@@ -275,11 +278,22 @@ sleep 2  # Даем время на установку соединения
 if ! pgrep -f "ssh.*-NT.*-R" > /dev/null && ! pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
     printf "\033[1;31m✗ Ошибка: процесс туннеля не запущен\033[0m\n"
     printf "Проверьте журнал командой: logread | grep ssh\n"
-    # Пробуем запустить вручную для отладки
+    
+    # Пробуем запустить вручную для отладки в фоновом режиме
+    printf "Запуск туннеля вручную...\n"
     if [ "$ssh_choice" = "2" ]; then
-        dbclient -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}"
+        dbclient -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" &
     else
-        ssh -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}"
+        ssh -NT -R "${remote_port}:${local_host}:${local_port}" "${vps_user}@${vps_ip}" -p "${ssh_port}" &
+    fi
+    
+    # Ждем немного и проверяем статус
+    sleep 2
+    if pgrep -f "ssh.*-NT.*-R" > /dev/null || pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
+        printf "\033[32m✓ Туннель успешно запущен\033[0m\n"
+    else
+        printf "\033[1;31m✗ Не удалось запустить туннель\033[0m\n"
+        exit 1
     fi
 else
     printf "\033[32m✓ Процесс туннеля запущен\033[0m\n"
@@ -293,7 +307,7 @@ else
     done
 fi
 
-printf '\n\033[32mНастройка завершена!\033[0m\n'
+printf '\n\033[32mНастройка заверше��а!\033[0m\n'
 printf "Для подключения к OpenWRT используйте следующие команды на вашем VPS сервере:\n\n"
 
 for remote_port in $tunnel_ports; do
@@ -413,7 +427,7 @@ is_local_ip() {
     return 1
 }
 
-# Создаем временный файл для новых правил
+# Создаем временный файл для новых прав��л
 cat > /tmp/firewall.reverse-tunnel << EOF
 # Reverse tunnel firewall rules
 config rule
@@ -457,7 +471,7 @@ fi
 
 # Если нужны новые правила, добавляем их
 if [ $NEED_RELOAD -eq 1 ]; then
-    printf '\033[33mДобавление новых правил firewall...\033[0m\n'
+    printf '\033[33mДобавление ��овых правил firewall...\033[0m\n'
     cat /tmp/firewall.reverse-tunnel >> /etc/config/firewall
     if [ $? -ne 0 ]; then
         printf "\033[1;31m✗ Ошибка: не удалось добавить правила firewall\033[0m\n"
