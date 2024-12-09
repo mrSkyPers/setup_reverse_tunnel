@@ -243,17 +243,17 @@ config reverse-tunnel 'general'
 EOF
 
 if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
-  # Добавление туннелей в конфиг
-  for remote_port in $tunnel_ports; do
-      local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-      local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
-      cat >> /etc/config/reverse-tunnel << EOF
-      config tunnel
-          option remote_port '${remote_port}'
-          option local_port '${local_port}'
-          option local_host '${local_host}'
-      EOF
-  done
+    # Добавление туннелей в конфиг
+    for remote_port in $tunnel_ports; do
+        local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        cat >> /etc/config/reverse-tunnel << EOF
+config tunnel
+    option remote_port '${remote_port}'
+    option local_port '${local_port}'
+    option local_host '${local_host}'
+EOF
+    done
 fi
 
 # Установка прав и включение автозапуска
