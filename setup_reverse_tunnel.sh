@@ -64,7 +64,7 @@ fi
 # Запрос данных VPS
 if [ -f /etc/config/reverse-tunnel ]; then
     printf '\n\033[33mОбнаружена существующая конфигурация туннеля.\033[0m\n'
-    read -p "Хотите использовать существующую конфигурацию? (y/N): " use_existing
+    read -p "Хотите использо��ать существующую конфигурацию? (y/N): " use_existing
     if [ "$use_existing" = "y" ] || [ "$use_existing" = "Y" ]; then
         # Проверяем наличие секции general
         if ! uci show reverse-tunnel.@general[0] >/dev/null 2>&1; then
@@ -96,9 +96,41 @@ if [ -f /etc/config/reverse-tunnel ]; then
 fi
 
 if [ "$use_existing" != "y" ] && [ "$use_existing" != "Y" ]; then
-    read -p "Введите IP-адрес VPS сервера: " vps_ip
+    # Запрос и проверка IP-адреса
+    while true; do
+        read -p "Введите IP-адрес VPS сервера: " vps_ip
+        # Проверка формата IP-адреса
+        if echo "$vps_ip" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' >/dev/null; then
+            # Проверка каждого октета
+            valid=1
+            for octet in $(echo "$vps_ip" | tr '.' ' '); do
+                if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ]; then
+                    valid=0
+                    break
+                fi
+            done
+            if [ "$valid" = "1" ]; then
+                # Проверка доступности хоста
+                if nc -z -w2 "$vps_ip" "$ssh_port" 2>/dev/null; then
+                    break
+                else
+                    printf "\033[1;31m✗ Ошибка: хост %s недоступен\033[0m\n" "$vps_ip"
+                fi
+            fi
+        fi
+        printf "\033[1;31m✗ Ошибка: некорректный формат IP-адреса\033[0m\n"
+        printf "Формат: xxx.xxx.xxx.xxx (например: 192.168.0.113)\n"
+    done
+
     read -p "Введите порт для SSH на VPS (по умолчанию 22): " ssh_port
     ssh_port=${ssh_port:-22}
+    
+    # Проверка порта
+    if ! echo "$ssh_port" | grep -E '^[0-9]+$' >/dev/null || [ "$ssh_port" -lt 1 ] || [ "$ssh_port" -gt 65535 ]; then
+        printf "\033[1;31m✗ Ошибка: некорректный порт SSH\033[0m\n"
+        exit 1
+    fi
+
     read -p "Введите имя пользователя на VPS: " vps_user
 
     # Запрос количества туннелей
@@ -276,7 +308,7 @@ chmod +x /etc/init.d/reverse-tunnel
 /etc/init.d/reverse-tunnel start
 
 # Проверка статуса туннеля
-printf '\n\033[32mПроверка статуса тун��еля...\033[0m\n'
+printf '\n\033[32mПроверка статуса туннеля...\033[0m\n'
 sleep 2  # Даем время на установку соединения
 
 # Проверяем процесс SSH
@@ -301,7 +333,7 @@ if ! pgrep -f "ssh.*-NT.*-R" > /dev/null && ! pgrep -f "dbclient.*-NT.*-R" > /de
         exit 1
     fi
 else
-    printf "\033[32m✓ Процесс туннеля ��апущен\033[0m\n"
+    printf "\033[32m✓ Проце��с туннеля запущен\033[0m\n"
     # Проверяем прослушивание портов
     for remote_port in $tunnel_ports; do
         if [ "$ssh_choice" = "2" ]; then
