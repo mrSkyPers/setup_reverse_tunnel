@@ -43,7 +43,7 @@ setup_ssh() {
     
     if [ "$ssh_type" = "dropbear" ]; then
         if ! command -v dropbear >/dev/null 2>&1; then
-            print_msg "$BLUE" "Ус��ановка Dropbear..."
+            print_msg "$BLUE" "Установка Dropbear..."
             opkg update
             opkg install dropbear
             /etc/init.d/dropbear enable
@@ -100,6 +100,95 @@ ClientAliveInterval 30
 ClientAliveCountMax 3
 EOF
     fi
+}
+
+# Функция копирования SSH ключа
+copy_ssh_key() {
+    local ssh_type="$1"
+    print_msg "$BLUE" "\nКопирование публичного ключа на VPS..."
+    printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
+    
+    cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+    
+    # Проверка подключения по ключу
+    print_msg "$BLUE" "\nПроверка подключения по ключу..."
+    if ! ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -p "$ssh_port" "${vps_user}@${vps_ip}" "echo OK" >/dev/null 2>&1; then
+        print_msg "$RED" "Ошибка: не удалось подключиться по ключу"
+        exit 1
+    fi
+    print_msg "$GREEN" "✓ Подключение по ключу работает"
+}
+
+# Функция создания init.d скрипта
+create_init_script() {
+    cat > /etc/init.d/reverse-tunnel << EOF
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=15
+USE_PROCD=1
+
+. /lib/functions.sh
+. /lib/functions/procd.sh
+
+start_service() {
+    config_load reverse-tunnel
+    
+    procd_open_instance
+    procd_set_param command ${SSH_CMD} -NTi /root/.ssh/id_rsa \\
+EOF
+
+    # Добавление всех туннелей в команду
+    for remote_port in $tunnel_ports; do
+        local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        echo "        -R ${remote_port}:${local_host}:${local_port} \\" >> /etc/init.d/reverse-tunnel
+    done
+
+    cat >> /etc/init.d/reverse-tunnel << EOF
+        ${vps_user}@${vps_ip} -p ${ssh_port}
+    
+    procd_set_param respawn 3600 5 0
+    procd_set_param stderr 1
+    procd_set_param stdout 1
+    procd_close_instance
+}
+
+service_triggers() {
+    procd_add_reload_trigger "reverse-tunnel"
+}
+
+reload_service() {
+    stop
+    start
+}
+EOF
+
+    chmod +x /etc/init.d/reverse-tunnel
+}
+
+# Функция создания конфигурационного файла
+create_config() {
+    mkdir -p /etc/config
+    cat > /etc/config/reverse-tunnel << EOF
+config reverse-tunnel 'general'
+    option enabled '1'
+    option ssh_port '${ssh_port}'
+    option vps_user '${vps_user}'
+    option vps_ip '${vps_ip}'
+EOF
+
+    # Добавление туннелей в конфиг
+    for remote_port in $tunnel_ports; do
+        local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        cat >> /etc/config/reverse-tunnel << EOF
+config tunnel
+    option remote_port '${remote_port}'
+    option local_port '${local_port}'
+    option local_host '${local_host}'
+EOF
+    done
 }
 
 # Основная функция
@@ -179,7 +268,39 @@ main() {
     generate_ssh_keys "$ssh_type"
     setup_ssh_config "$ssh_type"
 
-    # Продолжение в следующем сообщении...
+    # Копирование ключа на VPS
+    copy_ssh_key "$ssh_type"
+
+    # Создание конфигурации и скрипта автозапуска
+    create_config
+    create_init_script
+
+    # Запуск сервиса
+    /etc/init.d/reverse-tunnel enable
+    /etc/init.d/reverse-tunnel start
+
+    # Проверка статуса туннеля
+    print_msg "$BLUE" "\nПроверка статуса туннеля..."
+    sleep 2
+
+    if pgrep -f "ssh.*-NT.*-R" > /dev/null || pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
+        print_msg "$GREEN" "✓ Туннель успешно запущен"
+    else
+        print_msg "$RED" "✗ Ошибка запуска туннеля"
+        print_msg "$YELLOW" "Проверьте журнал: logread | grep ssh"
+        exit 1
+    fi
+
+    # Вывод информации о настройках
+    print_msg "$GREEN" "\nНастройка завершена!"
+
+    print_msg "$YELLOW" "\nУправление службой:"
+    printf "Запуск:          \033[32m/etc/init.d/reverse-tunnel start\033[0m\n"
+    printf "Остановка:       \033[32m/etc/init.d/reverse-tunnel stop\033[0m\n"
+    printf "Перезапуск:      \033[32m/etc/init.d/reverse-tunnel restart\033[0m\n"
+    printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
+    printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
+    printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
 }
 
 main "$@"
