@@ -21,6 +21,7 @@ read -p "Введите номер (1/2): " ssh_choice
 
 case $ssh_choice in
     2)
+        SSH_CMD="dbclient"  # Команда для Dropbear
         if ! command -v dropbear > /dev/null 2>&1; then
             printf '\n\033[32mУстановка Dropbear...\033[0m\n'
             opkg update
@@ -32,6 +33,7 @@ case $ssh_choice in
         fi
         ;;
     *)
+        SSH_CMD="/usr/bin/ssh"  # Команда для OpenSSH
         if ! command -v ssh > /dev/null 2>&1; then
             printf '\n\033[32mУстановка OpenSSH...\033[0m\n'
             opkg update
@@ -174,7 +176,7 @@ start_service() {
     config_load reverse-tunnel
     
     procd_open_instance
-    procd_set_param command /usr/bin/ssh -NT -i /root/.ssh/id_rsa \
+    procd_set_param command ${SSH_CMD} -NT -i /root/.ssh/id_rsa \
 EOF
 
 # Добавление всех туннелей в команду
@@ -208,6 +210,7 @@ EOF
 sed -i "s|\${vps_user}|$vps_user|g" /etc/init.d/reverse-tunnel
 sed -i "s|\${vps_ip}|$vps_ip|g" /etc/init.d/reverse-tunnel
 sed -i "s|\${ssh_port}|$ssh_port|g" /etc/init.d/reverse-tunnel
+sed -i "s|\${SSH_CMD}|$SSH_CMD|g" /etc/init.d/reverse-tunnel
 
 if [ $? -ne 0 ]; then
     printf "\033[1;31m✗ Ошибка: не удалось создать скрипт автозапуска\033[0m\n"
