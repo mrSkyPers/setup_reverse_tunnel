@@ -109,6 +109,10 @@ copy_ssh_key() {
     printf "Введите пароль для пользователя %s@%s когда появится запрос\n" "$vps_user" "$vps_ip"
     
     if [ "$ssh_type" = "dropbear" ]; then
+        if ! command -v dbclient >/dev/null 2>&1; then
+            print_msg "$RED" "Ошибка: dbclient не установлен"
+            exit 1
+        fi
         # Для Dropbear - копируем ключ и сразу проверяем
         cat /root/.ssh/id_rsa.pub | dbclient -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh && echo OK" >/dev/null 2>&1
         if [ $? -eq 0 ]; then
@@ -121,6 +125,10 @@ copy_ssh_key() {
             exit 1
         fi
     else
+        if ! command -v ssh >/dev/null 2>&1; then
+            print_msg "$RED" "Ошибка: ssh не установлен"
+            exit 1
+        fi
         # Для OpenSSH - копируем ключ и сразу проверяем
         cat /root/.ssh/id_rsa.pub | ssh -p "$ssh_port" "${vps_user}@${vps_ip}" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh && echo OK" >/dev/null 2>&1
         if [ $? -eq 0 ]; then
@@ -139,6 +147,9 @@ copy_ssh_key() {
 create_init_script() {
     local ssh_type="$1"
 
+    # Добавим проверку наличия необходимых директорий
+    mkdir -p /etc/init.d
+
     cat > /etc/init.d/reverse-tunnel << EOF
 #!/bin/sh /etc/rc.common
 
@@ -146,8 +157,9 @@ START=99
 STOP=15
 USE_PROCD=1
 
-. /lib/functions.sh
-. /lib/functions/procd.sh
+# Добавим проверку наличия библиотек
+[ -f /lib/functions.sh ] && . /lib/functions.sh
+[ -f /lib/functions/procd.sh ] && . /lib/functions/procd.sh
 
 start_service() {
     config_load reverse-tunnel
@@ -187,6 +199,11 @@ EOF
 
 # Функция создания конфигурационного файла
 create_config() {
+    if [ -f /etc/config/reverse-tunnel ]; then
+        mv /etc/config/reverse-tunnel /etc/config/reverse-tunnel.backup
+        print_msg "$YELLOW" "Существующая конфигурация сохранена как /etc/config/reverse-tunnel.backup"
+    fi
+    
     mkdir -p /etc/config
     cat > /etc/config/reverse-tunnel << EOF
 config reverse-tunnel 'general'
@@ -223,16 +240,13 @@ show_header() {
 # Функция для отображения меню выбора
 show_menu() {
     local title="$1"
-    shift
-    local options=("$@")
-    local i=1
+    local opt1="$2"
+    local opt2="$3"
     
     printf "${YELLOW}${title}${NC}\n"
     printf "╔════════════════════════════════════════════════════════════╗\n"
-    for opt in "${options[@]}"; do
-        printf "║ ${GREEN}%d)${NC} %-54s ║\n" "$i" "$opt"
-        i=$((i + 1))
-    done
+    printf "║ ${GREEN}1)${NC} %-54s ║\n" "$opt1"
+    printf "║ ${GREEN}2)${NC} %-54s ║\n" "$opt2"
     printf "╚════════════════════════════════════════════════════════════╝\n"
 }
 
@@ -378,7 +392,7 @@ main() {
     sleep 2
 
     if [ "$ssh_type" = "dropbear" ]; then
-        if pgrep -f "dbclient.*-NT.*-R" > /dev/null; then
+        if pgrep -f "dbclient.*-NT.*-R.*${vps_ip}" > /dev/null; then
             print_msg "$GREEN" "✓ Туннель успешно запущен (Dropbear)"
         else
             print_msg "$RED" "✗ Ошибка запуска туннеля"
@@ -386,7 +400,7 @@ main() {
             exit 1
         fi
     else
-        if pgrep -f "ssh.*-NT.*-R" > /dev/null; then
+        if pgrep -f "ssh.*-NT.*-R.*${vps_ip}" > /dev/null; then
             print_msg "$GREEN" "✓ Туннель успешно запущен (OpenSSH)"
         else
             print_msg "$RED" "✗ Ошибка запуска туннеля"
