@@ -317,6 +317,13 @@ get_input() {
 main() {
     show_header
 
+    # Проверка существующей конфигурации
+    if [ -f /etc/config/reverse-tunnel ]; then
+        print_msg "$YELLOW" "Обнаружена существующая конфигурация:"
+        cat /etc/config/reverse-tunnel
+        echo
+    fi
+
     # Выбор SSH сервера
     show_menu "Выберите SSH сервер:" \
         "OpenSSH (рекомендуется для максимальной совместимости)" \
@@ -329,10 +336,16 @@ main() {
         2) 
             ssh_type="dropbear"
             print_msg "$BLUE" "→ Выбран Dropbear"
+            if command -v dropbear >/dev/null 2>&1; then
+                print_msg "$GREEN" "Dropbear уже установлен."
+            fi
             ;;
         *) 
             ssh_type="openssh"
             print_msg "$BLUE" "→ Выбран OpenSSH"
+            if command -v ssh >/dev/null 2>&1; then
+                print_msg "$GREEN" "OpenSSH уже установлен."
+            fi
             ;;
     esac
 
@@ -468,6 +481,10 @@ main() {
     printf "Статус:          \033[32m/etc/init.d/reverse-tunnel status\033[0m\n"
     printf "Включить автозапуск:   \033[32m/etc/init.d/reverse-tunnel enable\033[0m\n"
     printf "Отключить автозапуск:  \033[32m/etc/init.d/reverse-tunnel disable\033[0m\n"
+
+    # Информация о ручном добавлении туннелей
+    print_msg "$YELLOW" "\nДля ручного добавления туннелей отредактируйте файл:"
+    printf "\033[32m/etc/config/reverse-tunnel\033[0m\n"
 }
 
 main "$@"
