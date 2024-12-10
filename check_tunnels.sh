@@ -20,7 +20,10 @@ if [ -z "$PORTS" ]; then
     exit 0
 fi
 
+echo "Проверяем порты: $PORTS"
+
 for port in $PORTS; do
+    echo "Проверка порта: $port"
     if ! netstat -an | grep "LISTEN" | grep ":$port " > /dev/null; then
         echo "Туннель на порту $port не активен"
         logger "Reverse tunnel on port $port is down"
