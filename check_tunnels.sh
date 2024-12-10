@@ -6,8 +6,13 @@ get_ports() {
     read -r PORTS
 }
 
-# Запрос портов у пользователя
-get_ports
+# Проверка наличия аргументов
+if [ "$#" -eq 0 ]; then
+    echo "Аргументы не переданы. Переходим к интерактивному вводу."
+    get_ports
+else
+    PORTS="$@"
+fi
 
 # Проверка активных туннелей
 if [ -z "$PORTS" ]; then
@@ -25,4 +30,4 @@ for port in $PORTS; do
 done
 
 # Добавляем в cron
-# */5 * * * * /root/check_tunnels.sh 
+# */5 * * * * /root/check_tunnels.sh порт1 порт2 порт3 ... 
