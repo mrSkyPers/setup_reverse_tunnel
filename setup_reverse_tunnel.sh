@@ -48,6 +48,8 @@ setup_ssh() {
             opkg install dropbear
             /etc/init.d/dropbear enable
             /etc/init.d/dropbear start
+        else
+            print_msg "$GREEN" "Dropbear уже установлен."
         fi
         SSH_CMD="dbclient"
     else
@@ -61,6 +63,8 @@ setup_ssh() {
             print_msg "$BLUE" "Установка openssh-keygen..."
             opkg update
             opkg install openssh-keygen
+        else
+            print_msg "$GREEN" "OpenSSH уже установлен."
         fi
         SSH_CMD="/usr/bin/ssh"
     fi
@@ -244,6 +248,21 @@ EOF
     done
 }
 
+# Функция добавления новых туннелей
+add_tunnels() {
+    echo "Добавление новых туннелей к существующей конфигурации."
+    for remote_port in $tunnel_ports; do
+        local_host=$(echo $local_hosts | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        local_port=$(echo $local_ports | cut -d' ' -f$(echo $tunnel_ports | tr ' ' '\n' | grep -n $remote_port | cut -d':' -f1))
+        cat >> /etc/config/reverse-tunnel << EOF
+config tunnel
+    option remote_port '${remote_port}'
+    option local_port '${local_port}'
+    option local_host '${local_host}'
+EOF
+    done
+}
+
 # Добавим новые функции для улучшения интерактивности
 
 # Функция для отображения заголовка
@@ -389,6 +408,19 @@ main() {
         i=$((i + 1))
     done
 
+    # Проверка существующей конфигурации
+    if [ -f /etc/config/reverse-tunnel ]; then
+        print_msg "$YELLOW" "Обнаружена существующая конфигурация."
+        read -p "Хотите добавить новые туннели к существующей конфигурации? (y/n): " add_tunnels_choice
+        if [ "$add_tunnels_choice" = "y" ] || [ "$add_tunnels_choice" = "Y" ]; then
+            add_tunnels
+        else
+            create_config
+        fi
+    else
+        create_config
+    fi
+
     # Остальные функции с прогрессом настройки
     show_progress 1 4 "Генерация SSH ключей"
     generate_ssh_keys "$ssh_type"
@@ -398,7 +430,6 @@ main() {
     copy_ssh_key "$ssh_type"
 
     show_progress 3 4 "Создание конфигурации"
-    create_config
     create_init_script
 
     show_progress 4 4 "Запуск сервиса"
