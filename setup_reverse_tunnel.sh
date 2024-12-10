@@ -324,10 +324,18 @@ main() {
         echo
     fi
 
+    # Информация об установленных SSH серверах
+    if command -v dropbear >/dev/null 2>&1; then
+        print_msg "$GREEN" "Dropbear уже установлен."
+    fi
+    if command -v ssh >/dev/null 2>&1; then
+        print_msg "$GREEN" "OpenSSH уже установлен."
+    fi
+
     # Выбор SSH сервера
     show_menu "Выберите SSH сервер:" \
         "OpenSSH (рекомендуется для максимальной совместимости)" \
-        "Dropbear (легковесное решение, меньше нагрузки на устройство)"
+        "Dropbear (легковесное решение, меньше нагрузки на систему)"
     
     read -p "Введите номер (1/2): " ssh_choice
     echo
@@ -336,16 +344,10 @@ main() {
         2) 
             ssh_type="dropbear"
             print_msg "$BLUE" "→ Выбран Dropbear"
-            if command -v dropbear >/dev/null 2>&1; then
-                print_msg "$GREEN" "Dropbear уже установлен."
-            fi
             ;;
         *) 
             ssh_type="openssh"
             print_msg "$BLUE" "→ Выбран OpenSSH"
-            if command -v ssh >/dev/null 2>&1; then
-                print_msg "$GREEN" "OpenSSH уже установлен."
-            fi
             ;;
     esac
 
